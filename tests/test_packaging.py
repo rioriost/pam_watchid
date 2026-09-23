@@ -280,7 +280,7 @@ class PackagingTests(unittest.TestCase):
         subprocess.run(["/bin/sh", "-n", str(path)], check=True, capture_output=True)
         return path
 
-    def run_script(self, path, arguments=(), **environment):
+    def run_script(self, path, arguments=(), *, stdin=None, **environment):
         env = os.environ.copy()
         env.update({
             "TEST_EVENT_LOG": str(self.event_log), "TEST_CONFIGURATION": str(self.configuration),
@@ -294,7 +294,7 @@ class PackagingTests(unittest.TestCase):
         })
         return subprocess.run(
             ["/bin/sh", str(path), *arguments], text=True, capture_output=True, env=env,
-            timeout=120,
+            stdin=stdin, timeout=120,
         )
 
     def uninstall(self):
@@ -955,6 +955,18 @@ class PackagingTests(unittest.TestCase):
                 self.assertTrue((self.state / "pending").is_dir())
                 self.assert_payload_intact()
                 self.assert_no_forget()
+
+    def test_uninstall_does_not_wait_for_an_open_stdin_pipe(self):
+        self.activate()
+        read_fd, write_fd = os.pipe()
+        try:
+            result = self.run_script(self.uninstall(), stdin=read_fd)
+        finally:
+            os.close(write_fd)
+            os.close(read_fd)
+        self.assert_success(result)
+        self.assertEqual(self.configuration.read_bytes(), self.ORIGINAL)
+        self.assertFalse(self.base.exists())
 
     def test_uninstall_removes_only_owned_payload_and_keeps_backups(self):
         self.activate()

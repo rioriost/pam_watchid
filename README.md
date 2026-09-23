@@ -8,14 +8,10 @@ existing authentication methods, normally your password.
 
 **Release status:** [0.2.1 prerelease](https://github.com/rioriost/pam_watchid/releases/tag/v0.2.1)
 includes automatic PAM setup. Apple Watch, Touch ID, cancellation, password
-fallback, automatic backup/activation, managed reinstallation, and removal were
-checked on one Apple silicon Mac running Golden Gate 27. Other hardware, OS
-versions, and additional session conditions remain unverified.
-
-**Homebrew distribution is temporarily paused:** the final Homebrew upgrade
-check stalled in its uninstall hook on the verification Mac. This path is
-under investigation; the cask is disabled until it is resolved. Existing
-installed authentication and published package assets have not been removed.
+fallback, automatic backup/activation, managed removal, and Homebrew upgrades
+and reinstallations were checked on one Apple silicon Mac running Golden Gate
+27. Other hardware, OS versions, and additional session conditions remain
+unverified.
 
 ## Compatibility
 
