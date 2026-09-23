@@ -7,11 +7,13 @@
 #include <Security/SecBase.h>
 #include <SystemConfiguration/SCDynamicStoreCopySpecific.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/acl.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,6 +22,45 @@ bool
 watchid_module_options_valid(int argc)
 {
     return argc == 0;
+}
+
+bool
+watchid_safe_path_acl(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    errno = 0;
+    acl_t acl = acl_get_fd_np(fd, ACL_TYPE_EXTENDED);
+    int error = errno;
+    close(fd);
+    /* On macOS, ENOENT on an open descriptor means there is no extended ACL,
+     * not that the pathname is absent. Other retrieval failures remain errors. */
+    if (acl == NULL)
+        return error == ENOENT;
+    bool safe = acl_valid(acl) == 0;
+    const acl_permset_mask_t writable = ACL_WRITE_DATA | ACL_APPEND_DATA |
+        ACL_DELETE | ACL_DELETE_CHILD | ACL_WRITE_ATTRIBUTES |
+        ACL_WRITE_EXTATTRIBUTES | ACL_WRITE_SECURITY | ACL_CHANGE_OWNER;
+    acl_entry_t entry;
+    int selector = ACL_FIRST_ENTRY;
+    while (safe) {
+        errno = 0;
+        if (acl_get_entry(acl, selector, &entry) != 0) {
+            safe = errno == EINVAL;
+            break;
+        }
+        selector = ACL_NEXT_ENTRY;
+        acl_tag_t tag;
+        acl_permset_mask_t permissions;
+        if (acl_get_tag_type(entry, &tag) != 0 ||
+            acl_get_permset_mask_np(entry, &permissions) != 0 ||
+            (tag != ACL_EXTENDED_ALLOW && tag != ACL_EXTENDED_DENY) ||
+            (tag == ACL_EXTENDED_ALLOW && (permissions & writable) != 0))
+            safe = false;
+    }
+    acl_free(acl);
+    return safe;
 }
 
 static bool

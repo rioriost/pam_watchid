@@ -71,6 +71,9 @@ Recheck the console identity and local session before returning success.
 
 Validate root ownership, permissions, writable ACLs, and absence of symlinks
 throughout the installation-directory chain before executing the helper.
+Retrieve extended ACLs through an already-open, non-symlink descriptor:
+macOS reports `ENOENT` for a valid file without an extended ACL. Accept that
+specific condition, not failed path opens or other ACL-retrieval errors.
 Production helpers must have the expected Developer ID Application team,
 exact helper signing identifier, Hardened Runtime, and no entitlements.
 Dependencies are limited to system libraries/frameworks. Privileged

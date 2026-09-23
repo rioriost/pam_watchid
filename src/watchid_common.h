@@ -43,6 +43,7 @@ struct watchid_state {
 };
 
 bool watchid_module_options_valid(int argc);
+bool watchid_safe_path_acl(const char *path);
 bool watchid_parse_request(int argc, const char *const argv[],
                            struct watchid_request *request);
 bool watchid_session_allows(const struct watchid_session *session, uid_t uid,

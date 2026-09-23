@@ -5,12 +5,72 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <membership.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/acl.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+static void
+set_test_acl(const char *path, acl_tag_t tag, acl_permset_mask_t permissions)
+{
+    acl_t acl = acl_init(1);
+    acl_entry_t entry;
+    uuid_t user;
+    assert(acl != NULL);
+    assert(mbr_uid_to_uuid(getuid(), user) == 0);
+    assert(acl_create_entry(&acl, &entry) == 0);
+    assert(acl_set_tag_type(entry, tag) == 0);
+    assert(acl_set_qualifier(entry, user) == 0);
+    assert(acl_set_permset_mask_np(entry, permissions) == 0);
+    assert(acl_set_file(path, ACL_TYPE_EXTENDED, acl) == 0);
+    acl_free(acl);
+}
+
+static void
+test_real_filesystem_acls(void)
+{
+    char directory[] = "watchid-acl-XXXXXX";
+    assert(mkdtemp(directory) != NULL);
+    char file[128], link[128];
+    snprintf(file, sizeof(file), "%s/file", directory);
+    snprintf(link, sizeof(link), "%s/link", directory);
+    int fd = open(file, O_CREAT | O_EXCL | O_RDWR, 0600);
+    assert(fd >= 0);
+    close(fd);
+    acl_t empty = acl_init(0);
+    assert(empty != NULL);
+    assert(acl_set_file(file, ACL_TYPE_EXTENDED, empty) == 0);
+    assert(acl_set_file(directory, ACL_TYPE_EXTENDED, empty) == 0);
+    assert(watchid_safe_path_acl(directory));
+    assert(watchid_safe_path_acl(file));
+    assert(!watchid_safe_path_acl(link));
+    assert(symlink("file", link) == 0);
+    assert(!watchid_safe_path_acl(link));
+    set_test_acl(file, ACL_EXTENDED_ALLOW, ACL_READ_DATA | ACL_READ_ATTRIBUTES);
+    assert(watchid_safe_path_acl(file));
+    set_test_acl(file, ACL_EXTENDED_DENY, ACL_WRITE_DATA);
+    assert(watchid_safe_path_acl(file));
+    const acl_permset_mask_t writable[] = {
+        ACL_WRITE_DATA, ACL_APPEND_DATA, ACL_DELETE, ACL_DELETE_CHILD,
+        ACL_WRITE_ATTRIBUTES, ACL_WRITE_EXTATTRIBUTES, ACL_WRITE_SECURITY,
+        ACL_CHANGE_OWNER
+    };
+    for (size_t i = 0; i < sizeof(writable) / sizeof(writable[0]); ++i) {
+        set_test_acl(file, ACL_EXTENDED_ALLOW, writable[i]);
+        assert(!watchid_safe_path_acl(file));
+    }
+    assert(acl_set_file(file, ACL_TYPE_EXTENDED, empty) == 0);
+    acl_free(empty);
+    assert(unlink(link) == 0);
+    assert(unlink(file) == 0);
+    assert(!watchid_safe_path_acl(file));
+    assert(rmdir(directory) == 0);
+}
 
 static void
 test_arguments(void)
@@ -281,6 +341,7 @@ test_watchdog_while_main_blocks(bool parent_eof)
 int
 main(void)
 {
+    test_real_filesystem_acls();
     test_arguments();
     test_sessions();
     test_child_results();
