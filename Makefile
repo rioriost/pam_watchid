@@ -58,7 +58,8 @@ build:
 		-Wl,-exported_symbol,_pam_sm_setcred \
 		-o "$(OUT)/pam_watchid.so"
 	$(CLANG) $(COMMON_FLAGS) $(TEAM_DEFINE) -std=gnu11 -fobjc-arc -fblocks \
-		src/pam_watchid_helper.m src/watchid_common.c $(SYSTEM_FRAMEWORKS) \
+		src/pam_watchid_helper.m src/watchid_common.c src/watchid_watchdog.c \
+		$(SYSTEM_FRAMEWORKS) \
 		-framework Foundation -framework LocalAuthentication \
 		-o "$(OUT)/pam_watchid-helper"
 
@@ -77,6 +78,7 @@ check-native:
 	@mkdir -p "$(BUILD_ROOT)/tests"
 	$(CLANG) -arch $(NATIVE_ARCH) -mmacosx-version-min=15.0 $(WARNINGS) \
 		-std=c11 -Isrc tests/test_watchid.c src/watchid_common.c \
+		src/watchid_watchdog.c \
 		$(SYSTEM_FRAMEWORKS) -o "$(BUILD_ROOT)/tests/test_watchid"
 	"$(BUILD_ROOT)/tests/test_watchid"
 
