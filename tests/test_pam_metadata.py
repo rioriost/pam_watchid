@@ -13,15 +13,35 @@ class MetadataComparisonTests(unittest.TestCase):
         manager = (PROJECT / "packaging/pam-config.sh").read_text(encoding="utf-8")
         cases = [
             ("same attributes",
-             'pam_xattrs() { printf "same\\n"; }; pam_same_xattrs left right', 0),
+             'pam_xattrs() { printf "same\\n"; }; pam_preserved_xattrs left right', 0),
             ("different attributes",
-             'pam_xattrs() { printf "%s\\n" "$1"; }; pam_same_xattrs left right', 1),
+             'pam_xattrs() { printf "%s\\n" "$1"; }; pam_preserved_xattrs left right', 1),
             ("failed empty attributes",
              'pam_xattrs() { return 1; }; '
-             'if pam_same_xattrs left right; then exit 0; else exit 99; fi', 1),
+             'if pam_preserved_xattrs left right; then exit 0; else exit 99; fi', 1),
             ("failed partial attributes",
              'pam_xattrs() { printf "partial\\n"; return 1; }; '
-             'if pam_same_xattrs left right; then exit 0; else exit 99; fi', 1),
+             'if pam_preserved_xattrs left right; then exit 0; else exit 99; fi', 1),
+            ("generated provenance on copy",
+             'pam_xattrs() { if [ "$1" = right ]; then '
+             'printf "com.apple.provenance=AA\\n"; fi; }; '
+             'pam_preserved_xattrs left right', 0),
+            ("generated provenance preserves macl",
+             'pam_xattrs() { printf "com.apple.macl=11\\n"; '
+             'if [ "$1" = right ]; then printf "com.apple.provenance=AA\\n"; fi; }; '
+             'pam_preserved_xattrs left right', 0),
+            ("changed existing provenance",
+             'pam_xattrs() { if [ "$1" = left ]; then '
+             'printf "com.apple.provenance=AA\\n"; else printf "com.apple.provenance=BB\\n"; fi; }; '
+             'pam_preserved_xattrs left right', 1),
+            ("missing existing macl",
+             'pam_xattrs() { if [ "$1" = left ]; then '
+             'printf "com.apple.macl=11\\n"; else printf "com.apple.provenance=AA\\n"; fi; }; '
+             'pam_preserved_xattrs left right', 1),
+            ("unexpected additional macl",
+             'pam_xattrs() { if [ "$1" = right ]; then '
+             'printf "com.apple.macl=11\\n"; fi; }; '
+             'pam_preserved_xattrs left right', 1),
             ("same metadata",
              'pam_metadata() { printf "saved\\n"; }; '
              'pam_metadata_matches file saved', 0),

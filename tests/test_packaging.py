@@ -116,7 +116,11 @@ if name == "xattr":
     if native.returncode:
         print(native.stderr, end="", file=sys.stderr)
         sys.exit(native.returncode)
-    names = set(native.stdout.splitlines())
+    exact = os.environ.get("TEST_XATTR_EXACT") == "1"
+    if exact and Path(path).name.startswith(".pam_watchid.") and path not in xattrs:
+        xattrs[path] = {"com.apple.provenance": os.environ["TEST_COPY_PROVENANCE"]}
+        xattr_file.write_text(json.dumps(xattrs, sort_keys=True))
+    names = set() if exact else set(native.stdout.splitlines())
     names.update(xattrs.get(path, {}))
     if len(args) == 1:
         print("\n".join(sorted(names)), end="\n" if names else "")
@@ -126,6 +130,9 @@ if name == "xattr":
         attribute = args[-2]
         if attribute in xattrs.get(path, {}):
             print(xattrs[path][attribute])
+        elif exact:
+            print("fixture attribute is absent: " + attribute, file=sys.stderr)
+            sys.exit(1)
         else:
             sys.exit(subprocess.run(["/usr/bin/xattr", *args]).returncode)
 elif name == "pkgutil":
@@ -159,6 +166,11 @@ else:
                     for key, value in xattrs.items()
                     if key == source or key.startswith(source + "/")
                 }
+                generated = os.environ.get("TEST_COPY_PROVENANCE")
+                if name == "cp" and generated and Path(destination).is_file():
+                    copied.setdefault(destination, {}).setdefault("com.apple.provenance", generated)
+                    if Path(destination).name.startswith(".pam_watchid.") and os.environ.get("TEST_CANDIDATE_XATTRS"):
+                        copied[destination] = json.loads(os.environ["TEST_CANDIDATE_XATTRS"])
                 for key in list(xattrs):
                     if key == destination or key.startswith(destination + "/") or (
                         name == "mv" and (key == source or key.startswith(source + "/"))
@@ -183,6 +195,7 @@ class PackagingTests(unittest.TestCase):
     VERSION = "0.2.0"
     MODULE = b"fixture pam_watchid module, not executable\n"
     HELPER = b"fixture matching helper, not executable\n"
+    GENERATED_PROVENANCE = "1020304050607080"
     ORIGINAL = b"# existing local policy\nauth sufficient pam_tid.so\n"
     MAIN = (
         b"# sudo includes local authentication before password fallback\n"
@@ -233,6 +246,7 @@ class PackagingTests(unittest.TestCase):
                 path.chmod(0o755)
         self.event_log = self.root / "events.jsonl"
         self.xattr_file = self.root / "xattrs.json"
+        self.exact_xattrs = False
 
     def write_payload(self, module=None, helper=None):
         (self.base / "libexec").mkdir(parents=True, exist_ok=True)
@@ -274,6 +288,8 @@ class PackagingTests(unittest.TestCase):
             "TEST_XATTR_FILE": str(self.xattr_file), "TEST_XATTR_SHIM": str(self.bin / "xattr-model"),
             "TEST_PYTHON": sys.executable,
             "TEST_EMULATE_XATTRS": "1" if self.xattr_file.exists() else "",
+            "TEST_XATTR_EXACT": "1" if self.exact_xattrs else "",
+            "TEST_COPY_PROVENANCE": self.GENERATED_PROVENANCE if self.exact_xattrs else "",
             **environment,
         })
         return subprocess.run(
@@ -347,6 +363,11 @@ class PackagingTests(unittest.TestCase):
         recorded = json.loads(self.xattr_file.read_text()) if self.xattr_file.exists() else {}
         recorded[str(self.configuration)] = dict(attributes)
         self.xattr_file.write_text(json.dumps(recorded, sort_keys=True))
+
+    def emulate_generated_provenance(self):
+        # Explicitly model attr-free sources; ordinary fixtures expose native xattrs.
+        self.exact_xattrs = True
+        self.xattr_file.write_text("{}")
 
     def trusted_xattrs(self, path):
         return json.loads(self.xattr_file.read_text()).get(str(path), {})
@@ -799,6 +820,118 @@ class PackagingTests(unittest.TestCase):
         self.assert_backups_preserved(saved)
         for path in originals:
             self.assertEqual(self.trusted_xattrs(path), attributes)
+
+    def test_copy_generated_provenance_allows_attr_free_policy_snapshots(self):
+        for original in (self.ORIGINAL, None):
+            with self.subTest(original_present=original is not None):
+                self.reset_fixture()
+                self.emulate_generated_provenance()
+                if original is None:
+                    self.configuration.unlink()
+                self.assert_success(self.run_script(self.preinstall()))
+                self.assertEqual(self.main.read_bytes(), self.MAIN)
+                self.assertEqual(self.trusted_xattrs(self.main), {})
+                self.assertEqual(self.configuration.exists(), original is not None)
+                if original is not None:
+                    self.assertEqual(self.configuration.read_bytes(), original)
+                    self.assertEqual(self.trusted_xattrs(self.configuration), {})
+                    self.assertEqual(
+                        self.trusted_xattrs(self.state / "pending" / "sudo_local"),
+                        {"com.apple.provenance": self.GENERATED_PROVENANCE},
+                    )
+                prepared = self.backups()
+                main_snapshots = [
+                    self.state / name for name, content in prepared.items()
+                    if content == self.MAIN
+                ]
+                self.assertTrue(main_snapshots)
+                for path in main_snapshots:
+                    self.assertEqual(
+                        self.trusted_xattrs(path),
+                        {"com.apple.provenance": self.GENERATED_PROVENANCE},
+                    )
+                self.assert_success(self.run_script(self.postinstall()))
+                self.assertEqual(self.configuration.read_bytes(), self.managed_block + (original or b""))
+                self.assertEqual(
+                    self.trusted_xattrs(self.configuration),
+                    {"com.apple.provenance": self.GENERATED_PROVENANCE},
+                )
+                self.assert_backups_preserved(prepared)
+                self.assert_success(self.run_script(self.uninstall()))
+                self.assertEqual(self.configuration.exists(), original is not None)
+                if original is not None:
+                    self.assertEqual(self.configuration.read_bytes(), original)
+                self.assertEqual(self.main.read_bytes(), self.MAIN)
+                self.assertEqual(self.trusted_xattrs(self.main), {})
+                self.assert_backups_preserved(prepared)
+
+    def test_generated_provenance_is_pinned_for_interrupted_activation_retry(self):
+        for original in (self.ORIGINAL, None):
+            with self.subTest(original_present=original is not None):
+                self.reset_fixture()
+                self.emulate_generated_provenance()
+                if original is None:
+                    self.configuration.unlink()
+                self.assert_success(self.run_script(self.preinstall()))
+                self.assert_failure(self.run_script(
+                    self.postinstall(), TEST_FAIL_TOOL="rm",
+                    TEST_FAIL_MATCH=str(self.state / "pending" / "token"),
+                ))
+                active = self.managed_block + (original or b"")
+                self.assertEqual(self.configuration.read_bytes(), active)
+                recorded = self.state / "pending" / "activated-attributes"
+                recorded_bytes = recorded.read_bytes()
+                self.assertIn(
+                    f"com.apple.provenance={self.GENERATED_PROVENANCE}\n".encode(),
+                    recorded_bytes,
+                )
+                recorded.unlink()
+                self.assert_failure(self.run_script(self.postinstall()))
+                self.assertEqual(self.configuration.read_bytes(), active)
+                recorded.write_bytes(recorded_bytes)
+                recorded.chmod(0o600)
+                for changed in ({"com.apple.provenance": "ffeeddccbbaa9988"}, {}):
+                    with self.subTest(changed=changed):
+                        self.set_trusted_xattrs(changed)
+                        self.assert_failure(self.run_script(self.postinstall()))
+                        self.assertEqual(self.configuration.read_bytes(), active)
+                        self.assertEqual(self.trusted_xattrs(self.configuration), changed)
+                        self.assertTrue((self.state / "pending" / "token").exists())
+                        self.assert_payload_intact()
+                self.set_trusted_xattrs({"com.apple.provenance": self.GENERATED_PROVENANCE})
+                self.assert_success(self.run_script(self.postinstall()))
+                self.assertEqual(self.configuration.read_bytes(), active)
+                self.assertFalse((self.state / "pending").exists())
+
+    def test_candidate_copy_rejects_lost_changed_and_unexpected_attributes(self):
+        source = {"com.apple.macl": "00112233", "com.apple.provenance": "01020304"}
+        groups = (
+            (source, (
+                {"com.apple.provenance": source["com.apple.provenance"]},
+                {"com.apple.macl": source["com.apple.macl"]},
+                {**source, "com.apple.provenance": "ffffffff"},
+                {**source, "com.apple.macl": "ffffffff"},
+            )),
+            ({}, (
+                {"com.apple.provenance": self.GENERATED_PROVENANCE, "com.apple.macl": "00112233"},
+                {"com.apple.provenance": self.GENERATED_PROVENANCE, "org.pam_watchid.unknown": "00112233"},
+            )),
+        )
+        for original, changes in groups:
+            self.reset_fixture()
+            self.emulate_generated_provenance()
+            self.set_trusted_xattrs(original)
+            self.assert_success(self.run_script(self.preinstall()))
+            for changed in changes:
+                with self.subTest(original=original, candidate=changed):
+                    self.assert_failure(self.run_script(
+                        self.postinstall(), TEST_CANDIDATE_XATTRS=json.dumps(changed),
+                    ))
+                    self.assertEqual(self.configuration.read_bytes(), self.ORIGINAL)
+                    self.assertEqual(self.trusted_xattrs(self.configuration), original)
+                    self.assertTrue((self.state / "pending").is_dir())
+                    self.assert_payload_intact()
+                    self.assert_no_forget()
 
     def test_xattr_only_external_changes_are_detected_before_activation(self):
         attributes = {

@@ -150,6 +150,9 @@ supported metadata, including macOS-generated `com.apple.macl` and
 `com.apple.provenance` extended attributes. Prepare backups and state before
 atomic same-directory replacement; recheck for concurrent edits immediately
 before committing.
+Allow macOS to add provenance to a new copy without mistaking a data-only
+snapshot's metadata for the source's metadata. Preserve every existing
+attribute value and record the actual replacement attributes before activation.
 Refuse symlinks, hard links, unsafe permissions/ACLs, or unsupported metadata.
 Do not replace the whole file with an old backup during uninstall: remove only
 the exact owned block so subsequent administrator edits survive. Restore

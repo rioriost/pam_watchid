@@ -69,10 +69,17 @@ EOF
     done
 }
 
-pam_same_xattrs() {
+pam_preserved_xattrs() {
     sx_left=$(pam_xattrs "$1") || fail "Cannot compare extended attributes: $1"
     sx_right=$(pam_xattrs "$2") || fail "Cannot compare extended attributes: $2"
-    [ "$sx_left" = "$sx_right" ]
+    [ "$sx_left" != "$sx_right" ] || return 0
+    if printf '%s\n' "$sx_left" | /usr/bin/grep -q '^com.apple.provenance='; then
+        return 1
+    fi
+    # macOS can attach provenance to a new copy of an attribute-free system file.
+    sx_without_generated=$(printf '%s\n' "$sx_right" |
+        /usr/bin/sed '/^com.apple.provenance=/d') || fail "Cannot compare copied attributes."
+    [ "$sx_left" = "$sx_without_generated" ]
 }
 
 pam_metadata_matches() {
@@ -353,9 +360,9 @@ pam_backup() {
 pam_recheck() {
     pam_recheck_config
     if [ "$original_activation" = yes ]; then
+        pam_mutable_file "$backup_dir/activation"
         pam_exists "$activation" &&
             pam_metadata_matches "$activation" "$activation_metadata" &&
-            pam_same_xattrs "$activation" "$backup_dir/activation" &&
             /usr/bin/cmp -s "$activation" "$backup_dir/activation" ||
             fail "Activation state changed concurrently."
     else
@@ -369,14 +376,12 @@ pam_recheck_config() {
     pam_private_directory "$backup_dir"
     pam_mutable_file "$backup_dir/sudo"
     pam_metadata_matches "$pam_dir/sudo" "$main_metadata" &&
-        pam_same_xattrs "$pam_dir/sudo" "$backup_dir/sudo" &&
         /usr/bin/cmp -s "$pam_dir/sudo" "$backup_dir/sudo" ||
         fail "Main sudo policy changed concurrently."
     if [ "$original_exists" = yes ]; then
         pam_mutable_file "$backup_dir/sudo_local"
         pam_exists "$sudo_local" &&
             pam_metadata_matches "$sudo_local" "$original_metadata" &&
-            pam_same_xattrs "$sudo_local" "$backup_dir/sudo_local" &&
             /usr/bin/cmp -s "$sudo_local" "$backup_dir/sudo_local" ||
             fail "sudo_local changed concurrently."
     else
@@ -394,7 +399,7 @@ pam_new_candidate() {
         /bin/cp -p "$sudo_local" "$candidate" || fail "Cannot preserve original PAM metadata."
         [ "$(/usr/bin/stat -f '%d:%i' "$candidate")" = "$candidate_identity" ] ||
             fail "PAM candidate identity changed while copying metadata."
-        pam_same_xattrs "$candidate" "$sudo_local" ||
+        pam_preserved_xattrs "$sudo_local" "$candidate" ||
             fail "PAM extended attributes were not preserved."
     fi
 }
@@ -413,7 +418,7 @@ pam_candidate_attributes() {
         /bin/chmod "$ca_mode" "$candidate" || fail "Cannot preserve PAM owner/mode."
     pam_mutable_file "$candidate"
     if [ "$original_exists" = yes ]; then
-        pam_same_xattrs "$candidate" "$sudo_local" ||
+        pam_preserved_xattrs "$sudo_local" "$candidate" ||
             fail "PAM extended attributes changed while constructing candidate."
     fi
     candidate_metadata=$(pam_metadata "$candidate")
@@ -461,7 +466,7 @@ pam_pending_validate() {
     [ -d "$pending" ] || fail "No pending installation; run the package preinstall first."
     for pv_file in "$pending"/* "$pending"/.[!.]* "$pending"/..?*; do
         pam_exists "$pv_file" || continue
-        case "${pv_file##*/}" in token|sudo_local|absent|attributes) ;;
+        case "${pv_file##*/}" in token|sudo_local|absent|attributes|activated-attributes) ;;
             *) fail "Unexpected pending transaction file: $pv_file" ;;
         esac
         pam_mutable_file "$pv_file"
@@ -485,7 +490,6 @@ pam_pending_matches() {
     else
         pam_mutable_file "$sudo_local"
         [ -f "$sudo_local" ] &&
-            pam_same_xattrs "$sudo_local" "$pending/sudo_local" &&
             /usr/bin/cmp -s "$sudo_local" "$pending/sudo_local" ||
             fail "Prepared sudo_local bytes changed; refusing to adopt administrator edits."
         pending_attributes=$(pam_attributes "$sudo_local") ||
@@ -498,7 +502,7 @@ pam_pending_matches() {
 
 pam_clear_pending() {
     pam_pending_validate
-    for cp_name in token sudo_local absent attributes; do
+    for cp_name in token sudo_local absent attributes activated-attributes; do
         if pam_exists "$pending/$cp_name"; then
             /bin/rm -- "$pending/$cp_name" || fail "Cannot clear pending transaction."
         fi
@@ -590,11 +594,12 @@ pam_complete_install() {
         } > "$candidate" || fail "Cannot reconstruct completed transaction."
         if [ -f "$pending/absent" ]; then
             retry_origin=absent
-            retry_attributes=0:0:644:1:0
         else
             retry_origin=present
-            retry_attributes=$(/bin/cat "$pending/attributes") || fail "Cannot read prepared metadata."
         fi
+        [ -f "$pending/activated-attributes" ] || fail "Missing activated metadata snapshot."
+        retry_attributes=$(/bin/cat "$pending/activated-attributes") ||
+            fail "Cannot read activated metadata."
         completed_attributes=$(pam_attributes "$sudo_local") ||
             fail "Cannot recheck activated PAM attributes."
         [ "$activation_origin" = "$retry_origin" ] &&
@@ -618,6 +623,9 @@ pam_complete_install() {
     pam_candidate_attributes
     /bin/cp "$candidate" "$backup_dir/candidate" || fail "Cannot snapshot activation candidate."
     /bin/chmod 600 "$backup_dir/candidate" || fail "Cannot protect candidate snapshot."
+    activated_attributes=$(pam_attributes "$candidate") ||
+        fail "Cannot snapshot activated PAM attributes."
+    printf '%s\n' "$activated_attributes" > "$pending/activated-attributes"
     if [ "$original_exists" = yes ]; then new_origin=present; else new_origin=absent; fi
     printf '%s\n' "$new_origin" > "$backup_dir/activation.new"
     pam_mutable_file "$backup_dir/activation.new"
@@ -637,6 +645,8 @@ pam_complete_install() {
     pam_check_candidate
     printf '%s\n' "$new_origin" | /usr/bin/cmp -s - "$activation" ||
         fail "Activation state changed before commit."
+    printf '%s\n' "$activated_attributes" | /usr/bin/cmp -s - "$pending/activated-attributes" ||
+        fail "Activated metadata snapshot changed before commit."
     /bin/mv -f "$candidate" "$sudo_local" || fail "Cannot atomically activate PAM; use --cancel-install."
     candidate=
     candidate_owned=no

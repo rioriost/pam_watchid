@@ -76,13 +76,13 @@ Choose an unused version with two to four numeric components (normally
 
 ```sh
 make check
-make release VERSION=0.2.0
+make release VERSION=0.2.1
 ```
 
 When necessary:
 
 ```sh
-make release VERSION=0.2.0 TEAM_ID=ABCDEFGHIJ \
+make release VERSION=0.2.1 TEAM_ID=ABCDEFGHIJ \
   APPLICATION_IDENTITY=APPLICATION_CERTIFICATE_SHA1 \
   INSTALLER_IDENTITY=INSTALLER_CERTIFICATE_SHA1
 ```
@@ -129,7 +129,8 @@ auth sufficient /Library/Security/pam_watchid/pam_watchid.so
 ```
 
 The `activation` state records whether `sudo_local` originally existed.
-`pending/` records the version/architecture token and the prepared state.
+`pending/` records the version/architecture token, the prepared state, and
+the actual replacement file's attributes before activation.
 `lock/` serializes complete operations, including uninstall through payload
 and receipt removal. Each actual configuration change retains its own backup;
 neither update nor uninstall deletes previous backups.
@@ -140,6 +141,12 @@ including a missing final newline. The manager preserves macOS-generated
 concurrent changes to their values; files edited with the system sudo editor
 can legitimately carry these attributes. Other extended attributes and
 extended ACLs on files that must be replaced are refused rather than lost.
+macOS can attach `com.apple.provenance` when copying an attribute-free system
+file, including inside PackageKit. Data-only snapshots are compared by bytes;
+the source's separately captured metadata is checked for concurrent changes.
+A replacement may gain that OS-generated attribute but must preserve every
+existing attribute value. The pending record pins the replacement's actual
+attributes for interrupted-activation recovery.
 If the installer created `sudo_local` and no other contents remain, removal
 restores absence; an originally empty file remains a file. Unsupported metadata,
 customized mandatory authentication gates, unowned references, moved/edited
@@ -195,7 +202,7 @@ Generate the cask from the completed release manifest, not from handwritten
 checksums:
 
 ```sh
-make cask MANIFEST=dist/0.2.0/manifest.json
+make cask MANIFEST=dist/0.2.1/manifest.json
 ```
 
 The generated file is `build/pam-watchid.rb`. It chooses the native package
@@ -233,7 +240,7 @@ brew install --cask rioriost/cask/pam-watchid
 ```
 
 Publish neither a placeholder cask nor a cask that references unavailable
-assets. Version 0.2.0 and later automatically configure PAM on installation;
+assets. Version 0.2.1 and later automatically configure PAM on installation;
 0.1.1 remains a manual-activation package. The manifest's `pam_configuration`
 field controls the generated cask's caveats so old assets retain correct
 instructions.
