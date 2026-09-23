@@ -39,6 +39,8 @@ case "$major:$physical_arch" in
     *) echo "pam_watchid: unsupported macOS/hardware combination." >&2; exit 1 ;;
 esac
 
-# Embed the standalone uninstaller's read-only safety check; never activate PAM.
-set -- --check
-@UNINSTALL_SCRIPT@
+@PAM_CONFIG@
+
+pam_init
+install_token="@VERSION@:@ARCH@"
+pam_prepare_install "$install_token"

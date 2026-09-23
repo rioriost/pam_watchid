@@ -3,9 +3,11 @@
 ## Status and scope
 
 This plan was written before implementation and reviewed by an Astra xhigh
-supervisor on 2026-09-23. The required amendments from that review are integrated
-below. It was committed as `774bc8a` before parallel implementation by Astra
-high agents. Changes are committed in coherent increments.
+supervisor on 2026-09-23, then committed as `774bc8a` before implementation.
+The owner subsequently requested automatic PAM configuration during
+installation. That lifecycle change was separately reviewed by an Astra xhigh
+supervisor and supersedes the original manual-activation requirement.
+Changes are committed in coherent increments.
 
 The project is an independently implemented, MIT-licensed PAM authentication
 module for approving `sudo` with Apple Watch or Touch ID. Only the reference project's
@@ -25,14 +27,15 @@ remains the existing formula tap and need not receive a duplicate formula.
   Mac password. On these macOS versions, Apple Watch is the supported companion.
 - Failure, cancellation, unavailable authenticators, or timeout must not authorize sudo.
   The existing PAM authentication stack remains responsible for fallback.
-- Installing the package does not activate it or alter any PAM configuration.
-  Users explicitly add one `auth sufficient` line to `/etc/pam.d/sudo_local`.
+- Installing the package verifies its installed binaries, backs up
+  `/etc/pam.d/sudo_local`, and automatically adds a managed `auth sufficient`
+  entry. It never modifies `/etc/pam.d/sudo` or removes unrelated PAM entries.
 - Preserve existing PAM entries. Other sufficient modules remain capable of
   authenticating independently; this does not replace the system's PAM policy.
 - Deliver native arm64 and x86_64 packages and select by physical Mac hardware,
   including when Homebrew itself runs under Rosetta.
 - Keep the English and Japanese READMEs user-oriented: purpose, prerequisites,
-  installation, explicit activation, fallback, removal, and limitations.
+  installation, automatic configuration, fallback, removal, and limitations.
 - On a release build, select a unique signing team and a deterministic,
   project-specific Keychain notarization profile. If the profile is missing,
   interactively request the Apple ID and app-specific password without placing
@@ -122,18 +125,50 @@ user-writable Homebrew prefixes:
 - `libexec/pam_watchid-helper`
 - license and a fixed-purpose uninstall script
 
-Use a signed, notarized, stapled flat `.pkg`. Do not include a postinstall
-script that enables authentication. An architecture guard must reject an
+Use a signed, notarized, stapled flat `.pkg`. An architecture guard must reject an
 incorrect package before installing payload files. Packages must not replace
 the installation directory via an unsafe symlink.
 
-Document manual activation in `/etc/pam.d/sudo_local`, keeping Apple's main
-`/etc/pam.d/sudo` untouched. Removal must first ensure that the module's PAM
-entry has been removed; do not silently rewrite user-maintained PAM files.
-Document deactivation before upgrades as well as uninstall, because Homebrew
-may run uninstall hooks during upgrade. Do not bypass the activation guard.
-Keep password fallback and a separate authenticated terminal available while
-changing authentication configuration.
+Package hooks and the uninstaller embed a shared shell implementation; no
+Python or Homebrew runtime dependency is required. Use canonical
+`/private/etc/pam.d` paths to avoid treating macOS's `/etc` symlink as an unsafe
+installation. Require a recognized active `auth include sudo_local` in the
+main sudo stack and preserve its password fallback. Refuse local mandatory
+authentication gates that a prepended sufficient module could bypass, as well
+as ambiguous/custom control flow.
+
+Before postinstall activation, verify both installed binaries' safe paths,
+signatures, and SHA-256 checksums embedded after final codesigning. File
+existence alone is not sufficient. Activation prepends one exact managed
+three-line block. Repeated installation must not duplicate it. Reject altered,
+duplicated, or moved ownership markers rather than guessing how to edit them.
+
+Back up every actual change in a unique root-only directory under
+`/private/var/db/pam_watchid`, recording absence separately from an existing
+empty file. Preserve original bytes, including a missing final newline, and
+supported metadata, including macOS-generated `com.apple.macl` and
+`com.apple.provenance` extended attributes. Prepare backups and state before
+atomic same-directory replacement; recheck for concurrent edits immediately
+before committing.
+Refuse symlinks, hard links, unsafe permissions/ACLs, or unsupported metadata.
+Do not replace the whole file with an old backup during uninstall: remove only
+the exact owned block so subsequent administrator edits survive. Restore
+absence only when trusted state proves the manager created the file and no
+other contents remain. Retain backups after removal.
+
+Serialize mutations and hold the operation lock through the entire uninstall.
+A persistent pending-install record spans preinstall and postinstall:
+preinstall deactivates an owned block before payload replacement; postinstall
+activates only after payload verification. Failure leaves the existing
+password stack usable. A different operation must not re-enable or remove
+payload during a pending installation. Interrupted work must fail explicitly
+or resume only under verified matching state, never silently guess stale locks.
+
+Scan other PAM references before making changes and again before deleting
+payload. Unmanaged manual entries are not silently adopted or removed. Users
+with a manually enabled 0.1.1 must remove that old entry once before upgrading:
+the already-installed 0.1.1 uninstaller cannot acquire new behavior retroactively.
+All subsequent installer-managed entries are handled automatically.
 
 ### Builds, signing, and notarization
 
@@ -185,7 +220,8 @@ The cask belongs in `rioriost/homebrew-cask/Casks/pam-watchid.rb`, installed wit
 Check Homebrew's physical-hardware architecture facility rather than selecting
 solely from a translated process's `uname`. Protect both the cask and package
 against incompatible CPU/OS combinations. Provide a receipt-based uninstall
-and a guard that refuses removal while the PAM module is configured.
+that removes its managed PAM entry before payload removal and refuses removal
+if unmanaged references remain.
 Use `Hardware::CPU.physical_cpu_arm64?` in the cask. This supports translated
 Homebrew, not translated sudo: native-only modules require native-architecture
 sudo.
@@ -220,8 +256,14 @@ assets, so do not advertise an installable release before those exist.
   and a JSON manifest containing their post-stapling SHA-256 hashes and
   notarization identifiers. Reserve the output directory only after credentials
   validate, without overwriting an existing version.
-- Fixed-purpose uninstall script: `packaging/uninstall.sh`, installed at
-  `/Library/Security/pam_watchid/uninstall.sh`; refuse while actively configured.
+- Fixed-purpose uninstall wrapper: `packaging/uninstall.sh`, installed at
+  `/Library/Security/pam_watchid/uninstall.sh`, with the shared configuration
+  manager embedded by the release builder.
+- Package hooks: `packaging/preinstall.in` and `packaging/postinstall.in`,
+  embedding the same `packaging/pam-config.sh` definitions.
+- New manifests identify automatic configuration with
+  `pam_configuration: "automatic-v1"`; missing metadata means legacy manual
+  activation, so regenerated casks for 0.1.1 must not promise automatic setup.
 
 ## Work split
 
@@ -262,7 +304,7 @@ for secrets through chat, publish releases, or independently create commits.
 - Before declaring hardware support verified, manually test Watch approval,
   Touch ID, and password fallback on supported Intel/Apple-silicon OS combinations, plus
   SSH, `sudo -n`, askpass, alternate PAM users, fast user switching, multiplexer
-  sessions, concurrent requests, and install/upgrade/removal behavior.
+  sessions, concurrent requests, and automatic install/upgrade/removal behavior.
 - The first approved signed runtime prototype must establish Touch ID with
   Watch unavailable and Watch with Touch ID unavailable, cancellation, and
   fast user switching. Credential dropping alone is not runtime evidence.

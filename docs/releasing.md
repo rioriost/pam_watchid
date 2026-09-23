@@ -76,13 +76,13 @@ Choose an unused version with two to four numeric components (normally
 
 ```sh
 make check
-make release VERSION=0.1.0
+make release VERSION=0.2.0
 ```
 
 When necessary:
 
 ```sh
-make release VERSION=0.1.0 TEAM_ID=ABCDEFGHIJ \
+make release VERSION=0.2.0 TEAM_ID=ABCDEFGHIJ \
   APPLICATION_IDENTITY=APPLICATION_CERTIFICATE_SHA1 \
   INSTALLER_IDENTITY=INSTALLER_CERTIFICATE_SHA1
 ```
@@ -93,6 +93,13 @@ Runtime, and no entitlements. The pipeline signs the binaries and flat
 installer packages, submits each package, requires notarization acceptance,
 staples and validates the tickets, verifies package signatures, then records
 the final SHA-256 hashes and submission metadata.
+
+After codesigning the payload, the pipeline embeds the final module and helper
+hashes in the package's postinstall script. Postinstall verifies the installed
+pair before changing PAM. Do not render those hashes before codesigning.
+Preinstall, postinstall, and the installed uninstaller embed the same
+`packaging/pam-config.sh` implementation; the package never ships a replacement
+`sudo` or `sudo_local` as payload.
 
 Never upload a pre-stapling package or derive a checksum before stapling.
 Do not reuse an already published version or replace assets under an existing
@@ -107,6 +114,58 @@ files. A failed build remains available for inspection; rerunning the same
 version refuses to overwrite it. Failed or cancelled credential setup does not
 reserve the version, so it can be retried without removing generated files.
 
+## Automatic PAM configuration and interrupted installation
+
+Preinstall verifies the supported PAM stack and records a pending transaction
+under `/private/var/db/pam_watchid/`. It removes an existing installer-managed
+entry before package payload replacement. Postinstall verifies the final
+signed payload hashes, writes a byte-preserving backup in a unique
+`backup.<UUID>/` directory, and atomically prepends the managed block:
+
+```text
+# pam_watchid: begin managed
+auth sufficient /Library/Security/pam_watchid/pam_watchid.so
+# pam_watchid: end managed
+```
+
+The `activation` state records whether `sudo_local` originally existed.
+`pending/` records the version/architecture token and the prepared state.
+`lock/` serializes complete operations, including uninstall through payload
+and receipt removal. Each actual configuration change retains its own backup;
+neither update nor uninstall deletes previous backups.
+
+Removal strips only the exact prefix and preserves the remaining bytes,
+including a missing final newline. The manager preserves macOS-generated
+`com.apple.macl` and `com.apple.provenance` extended attributes and checks for
+concurrent changes to their values; files edited with the system sudo editor
+can legitimately carry these attributes. Other extended attributes and
+extended ACLs on files that must be replaced are refused rather than lost.
+If the installer created `sudo_local` and no other contents remain, removal
+restores absence; an originally empty file remains a file. Unsupported metadata,
+customized mandatory authentication gates, unowned references, moved/edited
+markers, or concurrent changes are errors, not reasons to overwrite settings.
+
+After a failed installation, **first make sure the installer is no longer
+running**. If the pending prepared configuration is unchanged and contains no
+module references, the new installed uninstaller can cancel that transaction:
+
+```sh
+sudo /Library/Security/pam_watchid/uninstall.sh --cancel-install
+```
+
+Then rerun the package installation. This command deliberately refuses an
+active or modified pending configuration. If the failure occurred before the
+new uninstaller was installed, use only a trusted rendered uninstaller from
+the same signed release, not a legacy 0.1.1 script or an ad-hoc replacement.
+A matching postinstall can finalize an interruption after activation if the
+configuration and payload still exactly match its recorded transaction.
+
+The `--disable` option removes an intact managed block without deleting payload
+or backups. It refuses pending installations. A stale `lock/` after an abrupt
+process kill requires administrator inspection; scripts do not guess from a
+PID or silently delete another operation's lock. Do not blindly restore a
+backup over newer settings or re-enable a reference to missing files.
+
 ## Hardware release gates
 
 Automated checks do not establish that a privileged sudo process and a
@@ -119,7 +178,8 @@ perform runtime verification on the supported hardware/OS combinations:
 - Incorrect PAM user, fast user switching, locked desktop, SSH, askpass,
   `sudo -n`, detached terminal sessions, concurrent requests, and parent death.
 - Native and Rosetta-running Homebrew installation; native sudo loading.
-- Explicit activation, deactivation, guarded upgrade, and guarded removal.
+- Automatic activation and backup, managed upgrade and removal, interrupted
+  installation recovery, and preservation of later administrator edits.
 
 Use disposable test installations or a recovery-capable test Mac. Do not
 disable Gatekeeper, SIP, signature validation, or helper trust checks.
@@ -135,7 +195,7 @@ Generate the cask from the completed release manifest, not from handwritten
 checksums:
 
 ```sh
-make cask MANIFEST=dist/0.1.0/manifest.json
+make cask MANIFEST=dist/0.2.0/manifest.json
 ```
 
 The generated file is `build/pam-watchid.rb`. It chooses the native package
@@ -173,4 +233,7 @@ brew install --cask rioriost/cask/pam-watchid
 ```
 
 Publish neither a placeholder cask nor a cask that references unavailable
-assets. Installing or upgrading a package never activates it in PAM.
+assets. Version 0.2.0 and later automatically configure PAM on installation;
+0.1.1 remains a manual-activation package. The manifest's `pam_configuration`
+field controls the generated cask's caveats so old assets retain correct
+instructions.

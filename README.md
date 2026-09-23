@@ -6,11 +6,13 @@ Approve `sudo` on your Mac with **Apple Watch or Touch ID**. If neither is
 available, you cancel, or authentication times out, sudo continues with its
 existing authentication methods, normally your password.
 
-**Release status:** [0.1.1](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)
-is an initial **prerelease**. Apple Watch, Touch ID, cancellation, and password
-fallback have been checked on one Apple silicon Mac running Golden Gate 27.
-Other hardware, OS versions, and additional session conditions remain
-unverified; this is not a stable release across the full target matrix.
+**Release status:** automatic setup is being prepared for **0.2.0**. The
+currently published [0.1.1 prerelease](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)
+still requires [manual activation](https://github.com/rioriost/pam_watchid/blob/v0.1.1/README.md#enable-for-sudo)
+(use `/usr/bin/sudo -e` to edit the file).
+Apple Watch, Touch ID, cancellation, and password fallback were checked on one
+Apple silicon Mac running Golden Gate 27. Other hardware, OS versions, and
+additional session conditions remain unverified.
 
 ## Compatibility
 
@@ -44,28 +46,39 @@ brew tap rioriost/cask
 brew install --cask rioriost/cask/pam-watchid
 ```
 
-The installer may request administrator approval. It installs a signed,
-notarized package under `/Library/Security/pam_watchid/`, **without changing your
-PAM configuration**. Run Homebrew as your normal user, not with `sudo`.
+Run Homebrew as your normal user, not with `sudo`. The installer requests
+administrator approval. Starting with 0.2.0, **no editor step is needed**:
+it installs the signed, notarized files under `/Library/Security/pam_watchid/`,
+verifies the installed module and helper, backs up `sudo_local`, and enables
+the module automatically.
 
-## Enable for sudo
+Backups are kept in root-only directories under
+`/private/var/db/pam_watchid/` and are retained after uninstall. If
+`/etc/pam.d/sudo_local` does not exist, the installer records that fact before
+creating it. It never edits `/etc/pam.d/sudo`.
 
-Keep a separate administrator terminal available while editing authentication
-settings. Do not remove any existing PAM entries or change `/etc/pam.d/sudo`.
-
-Open the local sudo configuration, creating it if necessary:
-
-```sh
-/usr/bin/sudo -e /etc/pam.d/sudo_local
-```
-
-Add this line before other `auth` entries, only once:
+The installer adds the following entry inside an identifiable managed block,
+without removing existing entries or adding duplicates on reinstall:
 
 ```text
 auth sufficient /Library/Security/pam_watchid/pam_watchid.so
 ```
 
-Save the file, then try from another terminal:
+Customized PAM configurations that cannot be changed safely are rejected with
+an explanation instead of being overwritten. Keep a separate administrator
+terminal available during installation.
+
+To disable automatically managed authentication without uninstalling:
+
+```sh
+sudo /Library/Security/pam_watchid/uninstall.sh --disable
+```
+
+Reinstalling enables it again after the same checks and backup procedure.
+
+## Use sudo
+
+After installation, try from another terminal:
 
 ```sh
 sudo -k
@@ -82,18 +95,15 @@ for every command. `sudo -k` clears the current cached authentication.
 
 ## Update or remove
 
-**First remove the added `pam_watchid.so` line** from
-`/etc/pam.d/sudo_local`. Keep every unrelated entry.
-
-Then update:
+For installer-managed configuration from 0.2.0 onward:
 
 ```sh
 brew upgrade --cask rioriost/cask/pam-watchid
 ```
 
-Re-add the line afterwards if you want to keep using pam_watchid. Deactivation
-is required during upgrades so a configured PAM module is not removed or
-replaced while still active.
+The installer-managed entry is temporarily removed before replacing files and
+re-added only after verifying the new installation. You do not need to edit
+PAM settings for each update.
 
 To uninstall instead:
 
@@ -101,8 +111,15 @@ To uninstall instead:
 brew uninstall --cask rioriost/cask/pam-watchid
 ```
 
-Removal is refused if an active reference to the module remains in
-`/etc/pam.d`. The uninstaller never edits your authentication settings for you.
+Uninstall removes only the installer-managed entry before deleting the module.
+It preserves other settings, later administrator edits, and backups. If the
+managed block was modified, or another PAM file references the module, removal
+stops rather than guessing which settings to delete.
+
+**Upgrading from manually activated 0.1.1:** remove its old `pam_watchid.so`
+entry once, preserving every unrelated entry, before running `brew upgrade`.
+Use `/usr/bin/sudo -e /etc/pam.d/sudo_local`. The old uninstaller requires this;
+subsequent automatically managed upgrades do not.
 
 ## Limitations and troubleshooting
 
@@ -117,9 +134,10 @@ Removal is refused if an active reference to the module remains in
 - If no biometric/Watch prompt appears, check that the activation line exists,
   your terminal belongs to the active desktop account, and native sudo is used.
   Verify that Watch approval or Touch ID works normally in macOS first.
-- If you need to recover, remove only the pam_watchid line using your separate
-  administrator terminal. Keep the standard password authentication entries.
-  Never disable SIP or Gatekeeper to make this module work.
+- If you need to recover, use your separate administrator terminal to uninstall,
+  or remove the complete pam_watchid managed block without changing other entries.
+  Backups remain under `/private/var/db/pam_watchid/`; do not blindly restore an
+  old backup over newer administrator changes. Never disable SIP or Gatekeeper.
 
 ## License
 

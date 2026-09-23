@@ -344,12 +344,15 @@ class FakeBuildRunner:
                 directory = build_root / architecture
                 directory.mkdir(parents=True)
                 for name in ("pam_watchid.so", "pam_watchid-helper"):
-                    (directory / name).write_bytes(b"fake native code")
+                    (directory / name).write_bytes(f"fake native code {architecture} {name}".encode())
         elif tool == "lipo":
             return result(stdout=next(arch for arch in release.ARCHITECTURES if arch in Path(args[-1]).parts))
         elif tool == "chmod":
             assert args[1] == "-RN"
             return result()
+        elif tool == "codesign" and "--sign" in args:
+            with Path(args[-1]).open("ab") as stream:
+                stream.write(b" FAKE CODE SIGNATURE")
         elif tool == "codesign" and "--verbose=4" in args:
             kind = "helper" if args[-1].endswith("pam_watchid-helper") else "module"
             return result(stderr=(
@@ -399,6 +402,7 @@ class ReleaseFlowTests(ProjectFixture):
                 self.root / "fake.keychain-db", "fake-profile", output,
             )
         self.assertEqual(len(manifest["artifacts"]), 2)
+        self.assertEqual(manifest["pam_configuration"], "automatic-v1")
         build = runner.calls[0][0]
         self.assertEqual(build[:3], ["/usr/bin/make", "build-all", "check-artifacts"])
         self.assertIn(f"BUILD_ROOT={output}/work/build", build)
@@ -409,8 +413,17 @@ class ReleaseFlowTests(ProjectFixture):
             self.assertEqual(artifact["sha256"], release.sha256(package))
             self.assertTrue(artifact["stapled"])
             self.assertEqual(artifact["notarization"]["status"], "Accepted")
-            self.assertFalse((output / "work" / artifact["architecture"] / "scripts/postinstall").exists())
             root = output / "work" / artifact["architecture"] / "root"
+            hooks = root.parent / "scripts"
+            postinstall = (hooks / "postinstall").read_text()
+            payload = root / release.INSTALL_PATH.lstrip("/")
+            for name in ("pam_watchid.so", "libexec/pam_watchid-helper"):
+                binary = payload / name
+                self.assertTrue(binary.read_bytes().endswith(b" FAKE CODE SIGNATURE"))
+                self.assertIn(release.sha256(binary), postinstall)
+            self.assertNotIn("@PAM_CONFIG@", postinstall)
+            self.assertNotIn("@MODULE_SHA256@", postinstall)
+            self.assertIn("1.2.3", postinstall)
             for directory in [root, *[path for path in root.rglob("*") if path.is_dir()]]:
                 self.assertEqual(directory.stat().st_mode & 0o7777, 0o755)
             self.assertIn((["/bin/chmod", "-RN", str(root)], True), runner.calls)
@@ -548,6 +561,33 @@ class CaskTests(ProjectFixture):
     def verification_runner(self):
         return FakeRunner([result(), result(stdout=signature()),
                            result(), result(stdout=signature())])
+
+    def test_configuration_caveats_match_new_and_legacy_packages(self):
+        manifest = self.manifest()
+        data = json.loads(manifest.read_text())
+        output = self.root / "pam-watchid.rb"
+        text = generate_cask.generate(manifest, output, self.verification_runner())
+        self.assertIn("automatically enables pam_watchid", text)
+        self.assertNotIn("Installation does not activate PAM", text)
+        del data["pam_configuration"]
+        manifest.write_text(json.dumps(data))
+        text = generate_cask.generate(manifest, output, self.verification_runner())
+        self.assertIn("Installation does not activate PAM", text)
+        self.assertNotIn("automatically enables pam_watchid", text)
+        data["pam_configuration"] = "unrecognized-mode"
+        manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(release.ReleaseError, "configuration mode"):
+            generate_cask.generate(manifest, output, self.verification_runner())
+
+    def test_postinstall_requires_valid_version_architecture_and_binary_digests(self):
+        for arguments in [
+            ("arm64", "../1.0", "a" * 64, "b" * 64),
+            ("unknown", "1.0", "a" * 64, "b" * 64),
+            ("arm64", "1.0", "", "b" * 64),
+            ("arm64", "1.0", "a" * 64, "not-a-digest"),
+        ]:
+            with self.subTest(arguments=arguments), self.assertRaises(release.ReleaseError):
+                release.render_postinstall(*arguments)
 
     def test_cask_hashes_urls_native_architecture_and_script_only_uninstall(self):
         manifest = self.manifest()

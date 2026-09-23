@@ -82,10 +82,29 @@ def generate(manifest_path, output, runner):
     if output.resolve().is_relative_to(manifest_path.resolve().parent):
         raise ReleaseError("Cask output must be outside the immutable release directory.")
     version, hashes = validate_manifest(manifest_path, runner)
+    metadata = parse_json_object(manifest_path.read_text(encoding="utf-8"), "Manifest")
+    configuration = metadata.get("pam_configuration", "manual")
+    if configuration == "automatic-v1":
+        caveats = (
+            "    Installation automatically enables pam_watchid in sudo_local after backing\n"
+            "    it up under /private/var/db/pam_watchid. Existing authentication is preserved.\n"
+            "    Uninstall removes only the installer-managed entry; backups are retained.\n"
+            "    Before upgrading a manually activated 0.1.1, remove its manual PAM entry.\n"
+            "    Native-architecture sudo is required."
+        )
+    elif configuration == "manual":
+        caveats = (
+            "    Installation does not activate PAM. Follow the project's manual activation\n"
+            "    instructions, preserving password fallback. Remove the pam_watchid PAM entry\n"
+            "    manually before upgrading or uninstalling. Native-architecture sudo is required."
+        )
+    else:
+        raise ReleaseError("Unsupported PAM configuration mode in release manifest.")
     text = (PROJECT / "packaging/pam-watchid.rb.in").read_text(encoding="utf-8")
     for key, value in {
         "@VERSION@": version, "@ARM64_SHA256@": hashes["arm64"],
         "@X86_64_SHA256@": hashes["x86_64"],
+        "@CONFIGURATION_CAVEATS@": caveats,
     }.items():
         text = text.replace(key, value)
     output.parent.mkdir(parents=True, exist_ok=True)

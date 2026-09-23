@@ -15,7 +15,7 @@ cask "pam-watchid" do
 
   pkg "pam-watchid-#{version}-#{native_arch}.pkg"
 
-  # The script checks PAM before touching payloads or the receipt, including on upgrade.
+  # The package's uninstaller owns PAM cleanup before removing its payload.
   uninstall script: {
     executable: "/Library/Security/pam_watchid/uninstall.sh",
     sudo: true,
@@ -23,8 +23,6 @@ cask "pam-watchid" do
   }
 
   caveats <<~EOS
-    Installation does not activate PAM. Follow the project's manual activation
-    instructions, preserving password fallback. Remove the pam_watchid PAM entry
-    manually before upgrading or uninstalling. Native-architecture sudo is required.
+@CONFIGURATION_CAVEATS@
   EOS
 end

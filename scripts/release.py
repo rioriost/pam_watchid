@@ -272,15 +272,50 @@ def submission_id(value):
     return value
 
 
-def render_preinstall(architecture, project=PROJECT):
+def render_preinstall(architecture, project=PROJECT, *, version="0.0.0"):
     if architecture not in ARCHITECTURES:
         raise ReleaseError("Unsupported package architecture.")
+    validate_version(version)
     template = (project / "packaging/preinstall.in").read_text(encoding="utf-8")
-    guard = (project / "packaging/uninstall.sh").read_text(encoding="utf-8")
-    return template.replace("@ARCH@", architecture).replace("@UNINSTALL_SCRIPT@", guard)
+    manager = (project / "packaging/pam-config.sh").read_text(encoding="utf-8")
+    return (template.replace("@ARCH@", architecture).replace("@VERSION@", version)
+            .replace("@PAM_CONFIG@", manager))
 
 
-def stage_payload(work, build_root, architecture, project=PROJECT):
+def render_postinstall(architecture, version, module_sha256, helper_sha256, project=PROJECT):
+    if architecture not in ARCHITECTURES:
+        raise ReleaseError("Unsupported package architecture.")
+    validate_version(version)
+    for digest in (module_sha256, helper_sha256):
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ReleaseError("Postinstall requires exact installed-binary SHA-256 checksums.")
+    template = (project / "packaging/postinstall.in").read_text(encoding="utf-8")
+    manager = (project / "packaging/pam-config.sh").read_text(encoding="utf-8")
+    for token, value in {
+        "@ARCH@": architecture, "@VERSION@": version,
+        "@MODULE_SHA256@": module_sha256, "@HELPER_SHA256@": helper_sha256,
+        "@PAM_CONFIG@": manager,
+    }.items():
+        template = template.replace(token, value)
+    return template
+
+
+def render_uninstall(project=PROJECT):
+    template = (project / "packaging/uninstall.sh").read_text(encoding="utf-8")
+    manager = (project / "packaging/pam-config.sh").read_text(encoding="utf-8")
+    return template.replace("@PAM_CONFIG@", manager)
+
+
+def write_postinstall(scripts, payload, architecture, version, project=PROJECT):
+    postinstall = scripts / "postinstall"
+    postinstall.write_text(render_postinstall(
+        architecture, version, sha256(payload / "pam_watchid.so"),
+        sha256(payload / "libexec/pam_watchid-helper"), project,
+    ), encoding="utf-8")
+    postinstall.chmod(0o755)
+
+
+def stage_payload(work, build_root, architecture, project=PROJECT, *, version="0.0.0"):
     root = work / "root"
     payload = root / INSTALL_PATH.lstrip("/")
     (payload / "libexec").mkdir(parents=True)
@@ -289,20 +324,23 @@ def stage_payload(work, build_root, architecture, project=PROJECT):
         (build_root / architecture / "pam_watchid-helper",
          payload / "libexec/pam_watchid-helper", 0o755),
         (project / "LICENSE", payload / "LICENSE", 0o644),
-        (project / "packaging/uninstall.sh", payload / "uninstall.sh", 0o755),
     ]
     for source, destination, mode in files:
         if source.is_symlink() or not source.is_file():
             raise ReleaseError(f"Missing or unsafe payload source: {source}")
         shutil.copyfile(source, destination)
         destination.chmod(mode)
+    uninstall = payload / "uninstall.sh"
+    uninstall.write_text(render_uninstall(project), encoding="utf-8")
+    uninstall.chmod(0o755)
     for directory in [root, *[item for item in root.rglob("*") if item.is_dir()]]:
         directory.chmod(0o755)
     scripts = work / "scripts"
     scripts.mkdir()
     preinstall = scripts / "preinstall"
-    preinstall.write_text(render_preinstall(architecture, project), encoding="utf-8")
+    preinstall.write_text(render_preinstall(architecture, project, version=version), encoding="utf-8")
     preinstall.chmod(0o755)
+    write_postinstall(scripts, payload, architecture, version, project)
     return root, payload, scripts
 
 
@@ -388,7 +426,9 @@ def release(args, runner, application, installer, keychain, profile, output):
     artifacts = []
     for architecture in ARCHITECTURES:
         architecture_work = work / architecture
-        root, payload, scripts = stage_payload(architecture_work, build_root, architecture)
+        root, payload, scripts = stage_payload(
+            architecture_work, build_root, architecture, version=args.version,
+        )
         # Drop inherited ACLs from our private staging tree, not from source or installed files.
         checked(runner, ["/bin/chmod", "-RN", str(root)])
         for filename, kind in [
@@ -399,6 +439,8 @@ def release(args, runner, application, installer, keychain, profile, output):
             if result.stdout.strip() != architecture:
                 raise ReleaseError(f"Unexpected architecture for {binary}.")
             sign_binary(runner, binary, application, keychain, kind)
+        # Codesigning changes bytes; activation must verify the final signed pair.
+        write_postinstall(scripts, payload, architecture, args.version)
         package = output / f"pam-watchid-{args.version}-{architecture}.pkg"
         checked(runner, [
             "/usr/bin/pkgbuild", "--root", str(root), "--scripts", str(scripts),
@@ -424,6 +466,7 @@ def release(args, runner, application, installer, keychain, profile, output):
     manifest = {
         "schema_version": 1, "version": args.version, "team_id": application.team,
         "receipt": RECEIPT, "install_path": INSTALL_PATH,
+        "pam_configuration": "automatic-v1",
         "application_identity": application.fingerprint,
         "installer_identity": installer.fingerprint,
         "artifacts": artifacts,

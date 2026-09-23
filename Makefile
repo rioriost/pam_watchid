@@ -84,6 +84,7 @@ check-native:
 
 check-scripts:
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
+	/bin/sh -n packaging/pam-config.sh
 	/bin/sh -n packaging/uninstall.sh
 
 check-artifacts:
