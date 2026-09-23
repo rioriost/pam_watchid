@@ -1,0 +1,36 @@
+cask "pam-watchid" do
+  version "@VERSION@"
+  native_arm = Hardware::CPU.physical_cpu_arm64?
+  native_arch = native_arm ? "arm64" : "x86_64"
+  sha256 native_arm ? "@ARM64_SHA256@" : "@X86_64_SHA256@"
+
+  url "https://github.com/rioriost/pam_watchid/releases/download/v#{version}/pam-watchid-#{version}-#{native_arch}.pkg"
+  name "pam_watchid"
+  desc "Approve sudo using Touch ID or Apple Watch"
+  homepage "https://github.com/rioriost/pam_watchid"
+
+  depends_on macos: ">= :sequoia"
+
+  pkg "pam-watchid-#{version}-#{native_arch}.pkg"
+
+  preflight do
+    major = MacOS.version.to_s.split(".").first.to_i
+    supported = [15, 26].include?(major) || (major == 27 && Hardware::CPU.physical_cpu_arm64?)
+    unless supported
+      raise "pam_watchid requires macOS 15 or 26, or macOS 27 on Apple silicon."
+    end
+  end
+
+  # The script checks PAM before touching payloads or the receipt, including on upgrade.
+  uninstall script: {
+    executable: "/Library/Security/pam_watchid/uninstall.sh",
+    sudo: true,
+    must_succeed: true,
+  }
+
+  caveats <<~EOS
+    Installation does not activate PAM. Follow the project's manual activation
+    instructions, preserving password fallback. Remove the pam_watchid PAM entry
+    manually before upgrading or uninstalling. Native-architecture sudo is required.
+  EOS
+end

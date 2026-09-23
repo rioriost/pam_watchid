@@ -4,8 +4,8 @@
 
 This plan was written before implementation and reviewed by an Astra xhigh
 supervisor on 2026-09-23. The required amendments from that review are integrated
-below. It will be committed before parallel implementation by Astra high
-agents. Changes will be committed in coherent increments.
+below. It was committed as `774bc8a` before parallel implementation by Astra
+high agents. Changes are committed in coherent increments.
 
 The project is an independently implemented, MIT-licensed PAM authentication
 module for approving `sudo` with Apple Watch or Touch ID. Only the reference project's
@@ -104,6 +104,11 @@ the context outside the state lock, and cannot be overridden by a late callback.
 Retain callback-owned state until process exit. Process isolation ensures late callback code
 cannot execute from an unloaded PAM module. Logs contain diagnostic categories,
 not credentials or executed command text.
+
+An independent helper-only watchdog starts before account lookup or framework
+calls. It terminates the process on parent EOF or the absolute deadline, even
+if those calls block; it must not depend on a state mutex or `invalidate`
+returning. Process teardown also ends pending LocalAuthentication work.
 
 ### Installation and removal
 
@@ -208,8 +213,10 @@ assets, so do not advertise an installable release before those exist.
   cannot authenticate through a privileged installation.
 - Output: `build/<arch>/pam_watchid.so` and
   `build/<arch>/pam_watchid-helper`; `ARCH=arm64|x86_64`; deployment target 15.0.
-- Release artifacts: `pam-watchid-<version>-<arch>.pkg` and a JSON manifest
-  containing their post-stapling SHA-256 hashes and notarization identifiers.
+- Release artifacts under `dist/<version>/`: `pam-watchid-<version>-<arch>.pkg`
+  and a JSON manifest containing their post-stapling SHA-256 hashes and
+  notarization identifiers. Reserve the output directory only after credentials
+  validate, without overwriting an existing version.
 - Fixed-purpose uninstall script: `packaging/uninstall.sh`, installed at
   `/Library/Security/pam_watchid/uninstall.sh`; refuse while actively configured.
 

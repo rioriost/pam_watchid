@@ -99,11 +99,13 @@ Do not reuse an already published version or replace assets under an existing
 release tag. Inspect any failed release output before cleaning only that
 specific version's generated files.
 
-Outputs are reserved under `build/releases/<version>/`. A completed release
+Outputs are reserved under `dist/<version>/` after credential validation.
+A completed release
 contains `manifest.json`, both native packages, notarization submission/log
 files, package-signature reports, and a `work/` directory with build and staging
-files. A failed attempt remains available for inspection; rerunning the same
-version refuses to overwrite it.
+files. A failed build remains available for inspection; rerunning the same
+version refuses to overwrite it. Failed or cancelled credential setup does not
+reserve the version, so it can be retried without removing generated files.
 
 ## Hardware release gates
 
@@ -133,7 +135,7 @@ Generate the cask from the completed release manifest, not from handwritten
 checksums:
 
 ```sh
-make cask MANIFEST=build/releases/0.1.0/manifest.json
+make cask MANIFEST=dist/0.1.0/manifest.json
 ```
 
 The generated file is `build/pam-watchid.rb`. It chooses the native package
