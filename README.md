@@ -6,12 +6,11 @@ Approve `sudo` on your Mac with **Apple Watch or Touch ID**. If neither is
 available, you cancel, or authentication times out, sudo continues with its
 existing authentication methods, normally your password.
 
-**Release status:** the first public release is being prepared. Signed,
-notarized version 0.1.1 has undergone authentication checks on one Apple silicon
-Mac running Golden Gate 27; broader hardware/OS coverage is still pending.
-The Homebrew commands below will become available after the release is
-published. Do not use an unverified development build for everyday sudo
-authentication.
+**Release status:** [0.1.1](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)
+is an initial **prerelease**. Apple Watch, Touch ID, cancellation, and password
+fallback have been checked on one Apple silicon Mac running Golden Gate 27.
+Other hardware, OS versions, and additional session conditions remain
+unverified; this is not a stable release across the full target matrix.
 
 ## Compatibility
 
@@ -39,8 +38,6 @@ to use Apple Watch. macOS controls which available authentication method it
 presents.
 
 ## Install
-
-After the first release is available:
 
 ```sh
 brew tap rioriost/cask

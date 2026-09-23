@@ -5,11 +5,11 @@
 Macの `sudo` を **Apple WatchまたはTouch ID** で承認できます。どちらも利用できない場合、
 キャンセルした場合、タイムアウトした場合は、通常のパスワード入力など、既存のsudo認証に戻ります。
 
-**リリース状況：** 初回の公開リリースを準備中です。署名・公証済みの0.1.1で、
-Golden Gate 27搭載のApple Silicon Mac 1台における認証確認を行っています。
-ほかのハードウェア・OSの確認は未実施です。
-以下のHomebrewコマンドは、初回リリースの公開後に利用できます。
-未検証の開発用ビルドを日常のsudo認証に使用しないでください。
+**リリース状況：** [0.1.1](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)
+は初回の**プレリリース**です。Golden Gate 27搭載のApple Silicon Mac 1台で、
+Apple Watch、Touch ID、キャンセル、パスワードへの切り替えを確認しました。
+ほかのハードウェア・OSや追加のセッション条件は未確認であり、
+すべての対応対象で安定動作を確認したリリースではありません。
 
 ## 対応環境
 
@@ -36,7 +36,7 @@ Touch IDの利用にApple Watchは不要です。Apple Watchの利用にTouch ID
 
 ## インストール
 
-初回リリースの公開後、次のコマンドでインストールできます。
+次のコマンドでインストールできます。
 
 ```sh
 brew tap rioriost/cask

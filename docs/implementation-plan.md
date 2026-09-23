@@ -283,6 +283,10 @@ was restored and all temporary PAM test services were removed. The package
 remains installed but is not enabled in sudo. Other hardware/OS combinations
 and the remaining release gates above are not yet hardware-verified.
 
+The owner approved publishing 0.1.1 as an initial prerelease, with these
+limitations disclosed, through GitHub Releases and `rioriost/homebrew-cask`.
+This does not waive the remaining gates for a stable full-matrix release.
+
 ## Primary references
 
 - [Reference external behavior](https://github.com/biscuitehh/pam-watchid#readme)

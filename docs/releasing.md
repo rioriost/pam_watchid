@@ -142,9 +142,17 @@ The generated file is `build/pam-watchid.rb`. It chooses the native package
 using Homebrew's physical CPU detection, including under Rosetta.
 
 Publish both `pam-watchid-<version>-arm64.pkg` and
-`pam-watchid-<version>-x86_64.pkg`, plus the manifest, in an immutable
-`v<version>` GitHub release in `rioriost/pam_watchid`. Ensure the downloaded
-assets match the manifest before publishing the cask.
+`pam-watchid-<version>-x86_64.pkg`, the manifest, and every submission,
+notarization-log, and package-signature file referenced by it in an immutable
+`v<version>` GitHub release in `rioriost/pam_watchid`. Upload to a draft first,
+download the uploaded assets, and regenerate the cask from that downloaded
+manifest before making the release public. Publish the cask only after the
+public package URLs work and match the manifest.
+
+The initial 0.1.1 release is explicitly a prerelease: basic authentication was
+checked on one Apple silicon Mac running macOS 27, not the complete runtime
+matrix. Keep that distinction in release notes until the outstanding gates
+have been completed.
 
 Commit the generated cask to:
 
