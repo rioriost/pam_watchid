@@ -261,7 +261,7 @@ for secrets through chat, publish releases, or independently create commits.
 
 ## Primary references
 
-- [Reference external behavior](https://github.com/biscuitehh/pam-watchid/blob/master/README.md)
+- [Reference external behavior](https://github.com/biscuitehh/pam-watchid#readme)
 - [Apple biometrics-or-companion policy](https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthenticationwithbiometricsorcompanion)
 - [Apple Watch approval prerequisites](https://support.apple.com/en-us/102442)
 - [Apple macOS releases](https://support.apple.com/en-us/100100)

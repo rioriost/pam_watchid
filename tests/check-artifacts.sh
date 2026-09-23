@@ -11,6 +11,12 @@ for arch in arm64 x86_64; do
             echo "Unexpected architecture for $binary: $actual" >&2
             exit 1
         fi
+        minimum=$(xcrun vtool -show-build "$binary" |
+            /usr/bin/awk '$1 == "minos" { print $2 }')
+        if [ "$minimum" != "15.0" ]; then
+            echo "Unexpected minimum macOS version for $binary: $minimum" >&2
+            exit 1
+        fi
         if /usr/bin/nm -u "$binary" | /usr/bin/grep -E \
             'LAContext.*Private|kLAOption|LACreateNewContext|vproc|externalizedContext'; then
             echo "Private authentication symbol found in $binary" >&2
@@ -31,4 +37,4 @@ for arch in arm64 x86_64; do
         exit 1
     fi
 done
-echo "Native artifacts match architecture, export, and dependency requirements."
+echo "Native artifacts match architecture, macOS, export, and dependency requirements."

@@ -71,7 +71,8 @@ missing profile stop with instructions to run `make notary-profile` locally.
 
 ## Build a release
 
-Choose an unused semantic version and work from a reviewed, committed tree:
+Choose an unused version with two to four numeric components (normally
+`major.minor.patch`, without a `v` prefix) and work from a reviewed, committed tree:
 
 ```sh
 make check
@@ -97,6 +98,12 @@ Never upload a pre-stapling package or derive a checksum before stapling.
 Do not reuse an already published version or replace assets under an existing
 release tag. Inspect any failed release output before cleaning only that
 specific version's generated files.
+
+Outputs are reserved under `build/releases/<version>/`. A completed release
+contains `manifest.json`, both native packages, notarization submission/log
+files, package-signature reports, and a `work/` directory with build and staging
+files. A failed attempt remains available for inspection; rerunning the same
+version refuses to overwrite it.
 
 ## Hardware release gates
 
@@ -126,7 +133,7 @@ Generate the cask from the completed release manifest, not from handwritten
 checksums:
 
 ```sh
-make cask MANIFEST=/absolute/path/to/completed/manifest.json
+make cask MANIFEST=build/releases/0.1.0/manifest.json
 ```
 
 The generated file is `build/pam-watchid.rb`. It chooses the native package
