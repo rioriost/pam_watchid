@@ -2,7 +2,7 @@ SHELL := /bin/sh
 .DEFAULT_GOAL := build
 
 PROCESS_ARCH := $(shell /usr/bin/uname -m)
-TRANSLATED := $(shell /usr/sbin/sysctl -in sysctl.proc_translated)
+TRANSLATED := $(shell /usr/sbin/sysctl -in sysctl.proc_translated || echo unavailable)
 ifeq ($(PROCESS_ARCH),arm64)
 NATIVE_ARCH := arm64
 else ifeq ($(PROCESS_ARCH),x86_64)
@@ -18,6 +18,9 @@ $(error Cannot determine the physical Mac architecture)
 endif
 
 ARCH ?= $(NATIVE_ARCH)
+ifneq ($(words $(ARCH)),1)
+$(error ARCH must be a single architecture)
+endif
 ifeq ($(filter $(ARCH),arm64 x86_64),)
 $(error ARCH must be arm64 or x86_64)
 endif
