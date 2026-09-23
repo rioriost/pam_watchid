@@ -9,17 +9,11 @@ cask "pam-watchid" do
   desc "Approve sudo using Touch ID or Apple Watch"
   homepage "https://github.com/rioriost/pam_watchid"
 
-  depends_on macos: ">= :sequoia"
+  supported_macos = [:sequoia, :tahoe]
+  supported_macos << :golden_gate if native_arm
+  depends_on macos: supported_macos
 
   pkg "pam-watchid-#{version}-#{native_arch}.pkg"
-
-  preflight do
-    major = MacOS.version.to_s.split(".").first.to_i
-    supported = [15, 26].include?(major) || (major == 27 && Hardware::CPU.physical_cpu_arm64?)
-    unless supported
-      raise "pam_watchid requires macOS 15 or 26, or macOS 27 on Apple silicon."
-    end
-  end
 
   # The script checks PAM before touching payloads or the receipt, including on upgrade.
   uninstall script: {

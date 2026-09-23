@@ -562,7 +562,9 @@ class CaskTests(ProjectFixture):
         self.assertNotIn("pkgutil:", text)
         self.assertNotIn("delete:", text)
         self.assertIn("must_succeed: true", text)
-        self.assertIn("[15, 26]", text)
+        self.assertIn("supported_macos = [:sequoia, :tahoe]", text)
+        self.assertIn("depends_on macos: supported_macos", text)
+        self.assertNotIn("preflight do", text)
         for artifact in json.loads(manifest.read_text())["artifacts"]:
             self.assertIn(artifact["sha256"], text)
         ruby = shutil.which("ruby")
@@ -600,11 +602,10 @@ class FixtureCask
     return @values[name] if arguments.empty?
     @values[name] = arguments.first
   end
-  def preflight(&block)
-    @preflight = block
-  end
   def validate
-    instance_eval(&@preflight)
+    versions = { sequoia: 15, tahoe: 26, golden_gate: 27 }
+    supported = @values.fetch(:depends_on).fetch(:macos).map { |name| versions.fetch(name) }
+    raise "Unsupported macOS" unless supported.include?(MacOS.version.to_i)
   end
 end
 def cask(_name, &block)
