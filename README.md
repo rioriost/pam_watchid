@@ -12,6 +12,11 @@ fallback, automatic backup/activation, managed reinstallation, and removal were
 checked on one Apple silicon Mac running Golden Gate 27. Other hardware, OS
 versions, and additional session conditions remain unverified.
 
+**Homebrew distribution is temporarily paused:** the final Homebrew upgrade
+check stalled in its uninstall hook on the verification Mac. This path is
+under investigation; the cask is disabled until it is resolved. Existing
+installed authentication and published package assets have not been removed.
+
 ## Compatibility
 
 | macOS | Apple silicon | Intel |
