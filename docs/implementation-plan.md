@@ -276,12 +276,12 @@ Watch-only and Touch-ID-only user operations on an Apple silicon Mac running
 macOS 27. Cancellation returned `PAM_AUTH_ERR`. Direct user-session sudo
 authentication also succeeded with password input disabled.
 
-The password-fallback command completed, but the expected module-cancellation
-diagnostic was not observed; confirmation of the user's actual operation
-remains outstanding. The original `sudo_local` was restored and all temporary
-PAM test services were removed. The package remains installed but is not
-enabled in sudo. Other hardware/OS combinations and the remaining release
-gates above are not yet hardware-verified.
+Password fallback was subsequently verified in a separate fresh sudo session:
+the module logged rejection after cancellation, the user confirmed entering
+the Mac password, and sudo authentication succeeded. The original `sudo_local`
+was restored and all temporary PAM test services were removed. The package
+remains installed but is not enabled in sudo. Other hardware/OS combinations
+and the remaining release gates above are not yet hardware-verified.
 
 ## Primary references
 
