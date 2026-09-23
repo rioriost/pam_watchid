@@ -5,12 +5,11 @@
 Macの `sudo` を **Apple WatchまたはTouch ID** で承認できます。どちらも利用できない場合、
 キャンセルした場合、タイムアウトした場合は、通常のパスワード入力など、既存のsudo認証に戻ります。
 
-**リリース状況：** 自動設定に対応する **0.2.1** を準備中です。
-現在公開中の[0.1.1プレリリース](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)は、
-引き続き[手動での有効化](https://github.com/rioriost/pam_watchid/blob/v0.1.1/README.ja.md#sudoで有効にする)
-が必要です（ファイル編集には `/usr/bin/sudo -e` を使ってください）。
+**リリース状況：** 自動設定に対応する
+[0.2.1プレリリース](https://github.com/rioriost/pam_watchid/releases/tag/v0.2.1)を公開しています。
 Golden Gate 27搭載のApple Silicon Mac 1台で、Apple Watch、Touch ID、キャンセル、
-パスワードへの切り替えを確認済みですが、ほかのハードウェア・OSや追加のセッション条件は未確認です。
+パスワードへの切り替え、自動バックアップ・有効化、管理対象の再インストール・削除を確認済みです。
+ほかのハードウェア・OSや追加のセッション条件は未確認です。
 
 ## 対応環境
 

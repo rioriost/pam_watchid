@@ -6,13 +6,11 @@ Approve `sudo` on your Mac with **Apple Watch or Touch ID**. If neither is
 available, you cancel, or authentication times out, sudo continues with its
 existing authentication methods, normally your password.
 
-**Release status:** automatic setup is being prepared for **0.2.1**. The
-currently published [0.1.1 prerelease](https://github.com/rioriost/pam_watchid/releases/tag/v0.1.1)
-still requires [manual activation](https://github.com/rioriost/pam_watchid/blob/v0.1.1/README.md#enable-for-sudo)
-(use `/usr/bin/sudo -e` to edit the file).
-Apple Watch, Touch ID, cancellation, and password fallback were checked on one
-Apple silicon Mac running Golden Gate 27. Other hardware, OS versions, and
-additional session conditions remain unverified.
+**Release status:** [0.2.1 prerelease](https://github.com/rioriost/pam_watchid/releases/tag/v0.2.1)
+includes automatic PAM setup. Apple Watch, Touch ID, cancellation, password
+fallback, automatic backup/activation, managed reinstallation, and removal were
+checked on one Apple silicon Mac running Golden Gate 27. Other hardware, OS
+versions, and additional session conditions remain unverified.
 
 ## Compatibility
 
