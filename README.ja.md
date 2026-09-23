@@ -55,7 +55,7 @@ Homebrewは通常のユーザーで実行し、`sudo brew` は使用しないで
 sudoのローカル設定を開きます。ファイルがなければ作成します。
 
 ```sh
-sudoedit /etc/pam.d/sudo_local
+/usr/bin/sudo -e /etc/pam.d/sudo_local
 ```
 
 他の `auth` 行より前に、次の1行を一度だけ追加します。

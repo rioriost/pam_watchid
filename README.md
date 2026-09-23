@@ -56,7 +56,7 @@ settings. Do not remove any existing PAM entries or change `/etc/pam.d/sudo`.
 Open the local sudo configuration, creating it if necessary:
 
 ```sh
-sudoedit /etc/pam.d/sudo_local
+/usr/bin/sudo -e /etc/pam.d/sudo_local
 ```
 
 Add this line before other `auth` entries, only once:
