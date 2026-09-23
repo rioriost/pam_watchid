@@ -6,10 +6,12 @@ Approve `sudo` on your Mac with **Apple Watch or Touch ID**. If neither is
 available, you cancel, or authentication times out, sudo continues with its
 existing authentication methods, normally your password.
 
-**Release status:** the first signed, notarized release and hardware validation
-are pending. The Homebrew commands below will become available after that
-release is published. Do not use an unverified development build for everyday
-sudo authentication.
+**Release status:** the first public release is being prepared. Signed,
+notarized version 0.1.1 has undergone authentication checks on one Apple silicon
+Mac running Golden Gate 27; broader hardware/OS coverage is still pending.
+The Homebrew commands below will become available after the release is
+published. Do not use an unverified development build for everyday sudo
+authentication.
 
 ## Compatibility
 
@@ -17,10 +19,11 @@ sudo authentication.
 | --- | --- | --- |
 | Sequoia 15 | Targeted | Targeted |
 | Tahoe 26 | Targeted | Targeted |
-| Golden Gate 27 | Targeted | Not supported by macOS |
+| Golden Gate 27 | Checked on one Mac | Not supported by macOS |
 
-Use a Mac supported by the respective macOS release. These are implementation
-targets, not a claim that every hardware/OS combination has been verified.
+Use a Mac supported by the respective macOS release. Sequoia and Tahoe remain
+implementation targets without hardware authentication verification. The
+Golden Gate check does not cover every Mac model.
 Homebrew selects a package for the Mac's physical CPU, including when Homebrew
 runs under Rosetta. The `sudo` process itself must run natively.
 

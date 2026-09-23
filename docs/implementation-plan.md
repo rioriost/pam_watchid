@@ -269,6 +269,20 @@ for secrets through chat, publish releases, or independently create commits.
 - Public documentation must distinguish implementation targets, automated
   checks, and unperformed hardware authentication tests.
 
+### Runtime validation status (2026-09-23)
+
+Signed and notarized 0.1.1 passed isolated PAM authentication with the requested
+Watch-only and Touch-ID-only user operations on an Apple silicon Mac running
+macOS 27. Cancellation returned `PAM_AUTH_ERR`. Direct user-session sudo
+authentication also succeeded with password input disabled.
+
+The password-fallback command completed, but the expected module-cancellation
+diagnostic was not observed; confirmation of the user's actual operation
+remains outstanding. The original `sudo_local` was restored and all temporary
+PAM test services were removed. The package remains installed but is not
+enabled in sudo. Other hardware/OS combinations and the remaining release
+gates above are not yet hardware-verified.
+
 ## Primary references
 
 - [Reference external behavior](https://github.com/biscuitehh/pam-watchid#readme)
