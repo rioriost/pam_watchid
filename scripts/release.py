@@ -17,7 +17,7 @@ import uuid
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-ARCHITECTURES = ("arm64", "x86_64")
+ARCHITECTURES = ("arm64",)
 INSTALL_PATH = "/Library/Security/pam_watchid"
 RECEIPT = "io.github.rioriost.pam-watchid"
 VERSION_RE = re.compile(r"[0-9]+(?:\.[0-9]+){1,3}")

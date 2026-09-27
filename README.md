@@ -17,15 +17,17 @@ unverified.
 
 | macOS | Apple silicon | Intel |
 | --- | --- | --- |
-| Sequoia 15 | Targeted | Targeted |
-| Tahoe 26 | Targeted | Targeted |
+| Sequoia 15 | Targeted | Not supported |
+| Tahoe 26 | Targeted | Not supported |
 | Golden Gate 27 | Checked on one Mac | Not supported by macOS |
 
 Use a Mac supported by the respective macOS release. Sequoia and Tahoe remain
 implementation targets without hardware authentication verification. The
 Golden Gate check does not cover every Mac model.
-Homebrew selects a package for the Mac's physical CPU, including when Homebrew
-runs under Rosetta. The `sudo` process itself must run natively.
+Current builds and future releases target **Apple silicon (arm64/aarch64) only**;
+previously published releases are unchanged. Homebrew uses the arm64 package
+even when running under Rosetta on Apple silicon. The `sudo` process itself must
+run natively.
 
 For **Apple Watch**, first make sure you can
 [unlock your Mac and approve requests with your Watch](https://support.apple.com/en-us/102442):

@@ -1119,13 +1119,11 @@ class PackagingTests(unittest.TestCase):
 
     def test_preinstall_supported_physical_architecture_os_matrix(self):
         for architecture in release.ARCHITECTURES:
-            for physical in release.ARCHITECTURES:
+            for physical in ("arm64", "x86_64"):
                 for major in (14, 15, 16, 25, 26, 27, 28):
                     with self.subTest(package=architecture, physical=physical, major=major):
                         self.reset_fixture()
-                        expected = architecture == physical and (
-                            major in (15, 26) or (major == 27 and physical == "arm64")
-                        )
+                        expected = physical == "arm64" and major in (15, 26, 27)
                         response = self.run_script(
                             self.preinstall(architecture), TEST_PROCESS_ARCH=physical,
                             TEST_OS_VERSION=f"{major}.1",

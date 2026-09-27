@@ -7,7 +7,7 @@ export PATH
     echo "pam_watchid: installation on another target volume is not supported." >&2
     exit 1
 }
-# Intel may omit ARM-specific sysctls. A translated x86_64 process still runs on arm64.
+# A translated x86_64 process still runs on Apple silicon.
 process_arch=$(/usr/bin/uname -m) || {
     echo "pam_watchid: cannot query process architecture." >&2
     exit 1
@@ -22,7 +22,7 @@ case "$process_arch" in
         }
         case "$translated" in
             1) physical_arch=arm64 ;;
-            0|'') physical_arch=x86_64 ;;
+            0|'') echo "pam_watchid: Apple silicon is required; Intel Macs are not supported." >&2; exit 1 ;;
             *) echo "pam_watchid: cannot identify physical hardware." >&2; exit 1 ;;
         esac
         ;;
@@ -35,7 +35,7 @@ esac
 version=$(/usr/bin/sw_vers -productVersion) || exit 1
 major=${version%%.*}
 case "$major:$physical_arch" in
-    15:arm64|15:x86_64|26:arm64|26:x86_64|27:arm64) ;;
+    15:arm64|26:arm64|27:arm64) ;;
     *) echo "pam_watchid: unsupported macOS/hardware combination." >&2; exit 1 ;;
 esac
 

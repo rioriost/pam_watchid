@@ -7,6 +7,8 @@ supervisor on 2026-09-23, then committed as `774bc8a` before implementation.
 The owner subsequently requested automatic PAM configuration during
 installation. That lifecycle change was separately reviewed by an Astra xhigh
 supervisor and supersedes the original manual-activation requirement.
+On 2026-09-27, the owner narrowed build and distribution targets to Apple silicon
+(arm64/aarch64) only, superseding the original Intel support requirement.
 Changes are committed in coherent increments.
 
 The project is an independently implemented, MIT-licensed PAM authentication
@@ -21,7 +23,7 @@ remains the existing formula tap and need not receive a duplicate formula.
 
 ## Confirmed requirements
 
-- macOS Sequoia 15 and Tahoe 26: supported Intel and Apple silicon hardware.
+- macOS Sequoia 15 and Tahoe 26: Apple silicon hardware only.
 - macOS Golden Gate 27: Apple silicon only, following Apple's hardware support.
 - The module itself accepts Touch ID or companion authentication, but not a
   Mac password. On these macOS versions, Apple Watch is the supported companion.
@@ -32,8 +34,8 @@ remains the existing formula tap and need not receive a duplicate formula.
   entry. It never modifies `/etc/pam.d/sudo` or removes unrelated PAM entries.
 - Preserve existing PAM entries. Other sufficient modules remain capable of
   authenticating independently; this does not replace the system's PAM policy.
-- Deliver native arm64 and x86_64 packages and select by physical Mac hardware,
-  including when Homebrew itself runs under Rosetta.
+- Deliver only a native arm64 package, including when Homebrew itself runs under
+  Rosetta on Apple silicon. Reject Intel hardware.
 - Keep the English and Japanese READMEs user-oriented: purpose, prerequisites,
   installation, automatic configuration, fallback, removal, and limitations.
 - On a release build, select a unique signing team and a deterministic,
@@ -178,9 +180,9 @@ All subsequent installer-managed entries are handled automatically.
 Use a Makefile as the public build interface, with small standard-library-only
 scripts where shell parsing or credential/error handling would become brittle.
 
-Expected targets include native `build`, both-architecture builds, `check`,
-`notary-profile`, `release`, and cask generation. Both architectures target
-macOS 15 at compile time; the runtime/platform matrix remains explicit.
+Expected targets include arm64 `build`, `build-arm64`, `check`, `notary-profile`,
+`release`, and cask generation. `build-all` remains an alias for `build-arm64`.
+The deployment target is macOS 15; the runtime/platform matrix remains explicit.
 
 Use Developer ID Application for the module/helper and Developer ID Installer
 for packages, with timestamps and Hardened Runtime on the helper. Select the
@@ -196,7 +198,7 @@ Select one existing Keychain and use it consistently. Preflight its existence,
 readability, and unlocked state without retrieving passwords or invoking unlock
 UI. Classify absence by the supported tool's exact diagnostic for the exact
 profile name; unknown diagnostics are fatal. Serialize setup before processing
-the architecture-specific releases.
+the arm64 release.
 
 For missing profiles on a terminal, read the Apple ID interactively and invoke
 `notarytool store-credentials` with that ID and the selected Team ID, leaving
@@ -204,7 +206,7 @@ the password to Apple's secure native prompt. Validate before storing.
 Noninteractive builds fail with an actionable `make notary-profile` instruction.
 Do not automatically overwrite an existing but invalid profile.
 
-Build and sign both native packages; submit each with `notarytool --wait`,
+Build and sign the arm64 package; submit it with `notarytool --wait`,
 require an Accepted result, preserve submission metadata/logs, staple and
 validate the ticket, and verify the final package signature. Compute release
 SHA-256 hashes only after stapling.
@@ -253,10 +255,10 @@ assets, so do not advertise an installable release before those exist.
   `io.github.rioriost.pam-watchid`.
 - Compile-time team definition: `WATCHID_TEAM_ID`; empty development builds
   cannot authenticate through a privileged installation.
-- Output: `build/<arch>/pam_watchid.so` and
-  `build/<arch>/pam_watchid-helper`; `ARCH=arm64|x86_64`; deployment target 15.0.
-- Release artifacts under `dist/<version>/`: `pam-watchid-<version>-<arch>.pkg`
-  and a JSON manifest containing their post-stapling SHA-256 hashes and
+- Output: `build/arm64/pam_watchid.so` and
+  `build/arm64/pam_watchid-helper`; only `ARCH=arm64`; deployment target 15.0.
+- Release artifacts under `dist/<version>/`: `pam-watchid-<version>-arm64.pkg`
+  and a JSON manifest containing its post-stapling SHA-256 checksum and
   notarization identifiers. Reserve the output directory only after credentials
   validate, without overwriting an existing version.
 - Fixed-purpose uninstall wrapper: `packaging/uninstall.sh`, installed at
@@ -267,6 +269,8 @@ assets, so do not advertise an installable release before those exist.
 - New manifests identify automatic configuration with
   `pam_configuration: "automatic-v1"`; missing metadata means legacy manual
   activation, so regenerated casks for 0.1.1 must not promise automatic setup.
+  Use the original release-tag tooling for older dual-architecture manifests;
+  the current generator accepts only a single arm64 artifact.
 
 ## Work split
 
@@ -287,7 +291,7 @@ for secrets through chat, publish releases, or independently create commits.
 
 ## Validation and release gates
 
-- Compile and link arm64 and x86_64 against the installed public SDK with
+- Compile and link arm64 against the installed public SDK with
   warnings treated as errors and deployment target 15.
 - Check exported PAM symbols, Mach-O architectures, dependencies, and absence
   of private LA symbols.
@@ -300,12 +304,11 @@ for secrets through chat, publish releases, or independently create commits.
   hashes, and cask generation with isolated fake tool output.
 - Inspect unsigned development package contents and metadata without installing
   them. Validate shell/Python syntax and generated cask Ruby syntax.
-- CI runs nonprivileged checks on available macOS runners, including
-  cross-compilation where hardware coverage is unavailable.
+- CI runs nonprivileged checks on an Apple silicon macOS runner.
 - Do not change this machine's `/etc/pam.d`, install the module, or invoke an
   actual Watch authorization without separate user approval.
 - Before declaring hardware support verified, manually test Watch approval,
-  Touch ID, and password fallback on supported Intel/Apple-silicon OS combinations, plus
+  Touch ID, and password fallback on supported Apple-silicon OS combinations, plus
   SSH, `sudo -n`, askpass, alternate PAM users, fast user switching, multiplexer
   sessions, concurrent requests, and automatic install/upgrade/removal behavior.
 - The first approved signed runtime prototype must establish Touch ID with

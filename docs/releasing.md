@@ -6,8 +6,8 @@ build into a live PAM configuration.
 
 ## Local checks
 
-Use a Mac with an Xcode toolchain containing the macOS 15 SDK or later, Python 3,
-and Apple's signing, packaging, and notarization tools.
+Use an Apple silicon Mac with an Xcode toolchain containing the macOS 15 SDK or
+later, Python 3, and Apple's signing, packaging, and notarization tools.
 
 ```sh
 make build
@@ -15,11 +15,12 @@ make build-all
 make check
 ```
 
-`build` detects the physical CPU, including when invoked from a Rosetta shell.
-Override it with `ARCH=arm64` or `ARCH=x86_64` to cross-compile. `build-all`
-creates separate binaries in `build/arm64/` and `build/x86_64/`.
-Both have a deployment target of macOS 15. The native unit tests run only on the
-current machine; cross-compiling does not validate another OS or CPU at runtime.
+All builds target arm64 (aarch64), including when invoked from a Rosetta shell
+on Apple silicon. `ARCH=arm64` is the only accepted override; Intel Macs and
+`ARCH=x86_64` are rejected. `build-all` remains an alias for `build-arm64` and
+creates only `build/arm64/` binaries with a deployment target of macOS 15.
+The native unit tests run only on the current machine and do not validate
+another OS at runtime.
 
 Checks must never install PAM files, edit `/etc/pam.d`, request real
 authentication, submit notarization requests, or prompt for credentials.
@@ -76,23 +77,23 @@ Choose an unused version with two to four numeric components (normally
 
 ```sh
 make check
-make release VERSION=0.2.1
+make release VERSION=0.3.0
 ```
 
 When necessary:
 
 ```sh
-make release VERSION=0.2.1 TEAM_ID=ABCDEFGHIJ \
+make release VERSION=0.3.0 TEAM_ID=ABCDEFGHIJ \
   APPLICATION_IDENTITY=APPLICATION_CERTIFICATE_SHA1 \
   INSTALLER_IDENTITY=INSTALLER_CERTIFICATE_SHA1
 ```
 
-Release builds rebuild both architectures with the selected Team ID embedded
-in the module. The helper has its own exact signing identifier, Hardened
-Runtime, and no entitlements. The pipeline signs the binaries and flat
-installer packages, submits each package, requires notarization acceptance,
-staples and validates the tickets, verifies package signatures, then records
-the final SHA-256 hashes and submission metadata.
+Release builds rebuild arm64 with the selected Team ID embedded in the module.
+The helper has its own exact signing identifier, Hardened Runtime, and no
+entitlements. The pipeline signs the binaries and flat
+installer package, submits the package, requires notarization acceptance,
+staples and validates the ticket, verifies the package signature, then records
+the final SHA-256 checksum and submission metadata.
 
 After codesigning the payload, the pipeline embeds the final module and helper
 hashes in the package's postinstall script. Postinstall verifies the installed
@@ -108,7 +109,7 @@ specific version's generated files.
 
 Outputs are reserved under `dist/<version>/` after credential validation.
 A completed release
-contains `manifest.json`, both native packages, notarization submission/log
+contains `manifest.json`, one arm64 package, notarization submission/log
 files, package-signature reports, and a `work/` directory with build and staging
 files. A failed build remains available for inspection; rerunning the same
 version refuses to overwrite it. Failed or cancelled credential setup does not
@@ -190,8 +191,8 @@ perform runtime verification on the supported hardware/OS combinations:
 
 Use disposable test installations or a recovery-capable test Mac. Do not
 disable Gatekeeper, SIP, signature validation, or helper trust checks.
-macOS 27 has no supported Intel hardware. Translated sudo is outside the
-native-package support contract.
+Intel hardware is not supported on any macOS version. Translated sudo is outside
+the native-package support contract.
 
 Keep the release-status notices in both READMEs accurate. Do not replace
 "targeted" with a verified-support claim based on compilation alone.
@@ -202,19 +203,23 @@ Generate the cask from the completed release manifest, not from handwritten
 checksums:
 
 ```sh
-make cask MANIFEST=dist/0.2.1/manifest.json
+make cask MANIFEST=dist/0.3.0/manifest.json
 ```
 
-The generated file is `build/pam-watchid.rb`. It chooses the native package
-using Homebrew's physical CPU detection, including under Rosetta.
+The generated file is `build/pam-watchid.rb`. It references the arm64 package
+and checks Homebrew's physical CPU detection, including under Rosetta.
 
-Publish both `pam-watchid-<version>-arm64.pkg` and
-`pam-watchid-<version>-x86_64.pkg`, the manifest, and every submission,
+Publish `pam-watchid-<version>-arm64.pkg`, the manifest, and every submission,
 notarization-log, and package-signature file referenced by it in an immutable
 `v<version>` GitHub release in `rioriost/pam_watchid`. Upload to a draft first,
 download the uploaded assets, and regenerate the cask from that downloaded
 manifest before making the release public. Publish the cask only after the
 public package URLs work and match the manifest.
+
+The current cask generator requires exactly one arm64 artifact in the manifest
+and rejects Intel Macs while allowing Rosetta-running Homebrew on Apple silicon.
+Previously published dual-architecture releases remain immutable; use the tooling
+from their release tag if regenerating those older casks.
 
 The initial 0.1.1 release is explicitly a prerelease: basic authentication was
 checked on one Apple silicon Mac running macOS 27, not the complete runtime

@@ -15,13 +15,15 @@ Golden Gate 27搭載のApple Silicon Mac 1台で、Apple Watch、Touch ID、キ�
 
 | macOS | Apple Silicon | Intel |
 | --- | --- | --- |
-| Sequoia 15 | 対応対象 | 対応対象 |
-| Tahoe 26 | 対応対象 | 対応対象 |
+| Sequoia 15 | 対応対象 | 非対応 |
+| Tahoe 26 | 対応対象 | 非対応 |
 | Golden Gate 27 | 実機確認あり（1台） | macOS自体が非対応 |
 
 各macOSがサポートするMacを使用してください。SequoiaとTahoeは実装の対象ですが、
 実機での認証は未確認です。Golden Gateについても、すべてのMacで確認済みという意味ではありません。
-HomebrewがRosettaで動いている場合も、Mac本体のCPUに合わせたパッケージを選びます。
+現在のビルドと今後のリリースは **Apple Silicon（arm64/aarch64）のみ**を対象とします。
+公開済みのリリースは変更しません。
+Apple Silicon上でHomebrewがRosettaで動いている場合も、arm64パッケージを使用します。
 `sudo` 自体はネイティブ実行が必要です。
 
 **Apple Watch** を使う場合は、先に

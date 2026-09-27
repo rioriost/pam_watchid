@@ -31,8 +31,8 @@ def validate_manifest(path, runner):
     if manifest.get("receipt") != RECEIPT or manifest.get("install_path") != INSTALL_PATH:
         raise ReleaseError("Manifest is not for the fixed pam_watchid installation.")
     artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, list) or len(artifacts) != 2:
-        raise ReleaseError("Manifest must contain exactly two native package artifacts.")
+    if not isinstance(artifacts, list) or len(artifacts) != len(ARCHITECTURES):
+        raise ReleaseError("Manifest must contain exactly one arm64 package artifact.")
     hashes = {}
     for artifact in artifacts:
         if not isinstance(artifact, dict):
@@ -103,7 +103,6 @@ def generate(manifest_path, output, runner):
     text = (PROJECT / "packaging/pam-watchid.rb.in").read_text(encoding="utf-8")
     for key, value in {
         "@VERSION@": version, "@ARM64_SHA256@": hashes["arm64"],
-        "@X86_64_SHA256@": hashes["x86_64"],
         "@CONFIGURATION_CAVEATS@": caveats,
     }.items():
         text = text.replace(key, value)

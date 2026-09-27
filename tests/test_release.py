@@ -392,7 +392,7 @@ class ReleaseFlowTests(ProjectFixture):
         self.assertEqual(args.output_root / args.version / "manifest.json",
                          PROJECT / "dist/1.2.3/manifest.json")
 
-    def test_both_architectures_are_rebuilt_signed_and_hashed_after_stapling(self):
+    def test_only_arm64_is_rebuilt_signed_and_hashed_after_stapling(self):
         runner = FakeBuildRunner()
         output = self.root / "1.2.3"
         output.mkdir()
@@ -401,7 +401,13 @@ class ReleaseFlowTests(ProjectFixture):
                 argparse.Namespace(version="1.2.3"), runner, APPLICATION, INSTALLER,
                 self.root / "fake.keychain-db", "fake-profile", output,
             )
-        self.assertEqual(len(manifest["artifacts"]), 2)
+        self.assertEqual([item["architecture"] for item in manifest["artifacts"]], ["arm64"])
+        self.assertEqual(
+            sorted(path.name for path in (output / "work/build").iterdir()), ["arm64"],
+        )
+        self.assertEqual(
+            sorted(path.name for path in output.glob("*.pkg")), ["pam-watchid-1.2.3-arm64.pkg"],
+        )
         self.assertEqual(manifest["pam_configuration"], "automatic-v1")
         build = runner.calls[0][0]
         self.assertEqual(build[:3], ["/usr/bin/make", "build-all", "check-artifacts"])
@@ -428,7 +434,7 @@ class ReleaseFlowTests(ProjectFixture):
                 self.assertEqual(directory.stat().st_mode & 0o7777, 0o755)
             self.assertIn((["/bin/chmod", "-RN", str(root)], True), runner.calls)
         signing = [args for args, _ in runner.calls if "--sign" in args]
-        self.assertEqual(len(signing), 6)
+        self.assertEqual(len(signing), 3)
         for args in signing:
             self.assertIn("--timestamp", args)
             self.assertIn("--keychain", args)
@@ -559,8 +565,7 @@ class CaskTests(ProjectFixture):
         return output / "manifest.json"
 
     def verification_runner(self):
-        return FakeRunner([result(), result(stdout=signature()),
-                           result(), result(stdout=signature())])
+        return FakeRunner([result(), result(stdout=signature())])
 
     def test_configuration_caveats_match_new_and_legacy_packages(self):
         manifest = self.manifest()
@@ -583,27 +588,35 @@ class CaskTests(ProjectFixture):
         for arguments in [
             ("arm64", "../1.0", "a" * 64, "b" * 64),
             ("unknown", "1.0", "a" * 64, "b" * 64),
+            ("x86_64", "1.0", "a" * 64, "b" * 64),
             ("arm64", "1.0", "", "b" * 64),
             ("arm64", "1.0", "a" * 64, "not-a-digest"),
         ]:
             with self.subTest(arguments=arguments), self.assertRaises(release.ReleaseError):
                 release.render_postinstall(*arguments)
 
+    def test_preinstall_rejects_unsupported_package_architectures(self):
+        for architecture in ("x86_64", "unknown", ""):
+            with self.subTest(architecture=architecture):
+                with self.assertRaisesRegex(release.ReleaseError, "Unsupported package architecture"):
+                    release.render_preinstall(architecture)
+
     def test_cask_hashes_urls_native_architecture_and_script_only_uninstall(self):
         manifest = self.manifest()
         output = self.root / "pam-watchid.rb"
         runner = self.verification_runner()
         text = generate_cask.generate(manifest, output, runner)
-        self.assertEqual(len(runner.calls), 4)
+        self.assertEqual(len(runner.calls), 2)
         self.assertIn("Hardware::CPU.physical_cpu_arm64?", text)
         self.assertNotIn("Hardware::CPU.arm?", text)
         self.assertIn('version "1.2.3"', text)
-        self.assertIn("/releases/download/v#{version}/pam-watchid-#{version}-#{native_arch}.pkg", text)
+        self.assertIn("/releases/download/v#{version}/pam-watchid-#{version}-arm64.pkg", text)
+        self.assertNotIn("x86_64", text)
         self.assertNotIn("pkgutil:", text)
         self.assertNotIn("delete:", text)
         self.assertIn("must_succeed: true", text)
-        self.assertIn("supported_macos = [:sequoia, :tahoe]", text)
-        self.assertIn("depends_on macos: supported_macos", text)
+        self.assertIn("depends_on macos: [:sequoia, :tahoe, :golden_gate]", text)
+        self.assertIn("depends_on arch: :arm64 unless Hardware::CPU.physical_cpu_arm64?", text)
         self.assertNotIn("preflight do", text)
         for artifact in json.loads(manifest.read_text())["artifacts"]:
             self.assertIn(artifact["sha256"], text)
@@ -642,10 +655,17 @@ class FixtureCask
     return @values[name] if arguments.empty?
     @values[name] = arguments.first
   end
+  def depends_on(requirements)
+    @values[:depends_on] = @values.fetch(:depends_on, {}).merge(requirements)
+  end
   def validate
     versions = { sequoia: 15, tahoe: 26, golden_gate: 27 }
     supported = @values.fetch(:depends_on).fetch(:macos).map { |name| versions.fetch(name) }
     raise "Unsupported macOS" unless supported.include?(MacOS.version.to_i)
+    required_arch = @values.fetch(:depends_on)[:arch]
+    if required_arch && required_arch.to_s != ENV.fetch("FIXTURE_PROCESS_ARCH")
+      raise "Unsupported architecture"
+    end
   end
 end
 def cask(_name, &block)
@@ -658,12 +678,12 @@ load ARGV.fetch(0)
 ''')
         data = json.loads(manifest.read_text())
         hashes = {item["architecture"]: item["sha256"] for item in data["artifacts"]}
-        for physical_arm in ("0", "1"):
+        for physical_arm, process_arch in (("0", "x86_64"), ("1", "arm64"), ("1", "x86_64")):
             for major in (14, 15, 16, 26, 27, 28):
-                expected = major in (15, 26) or (major == 27 and physical_arm == "1")
-                with self.subTest(arm=physical_arm, major=major):
+                expected = physical_arm == "1" and major in (15, 26, 27)
+                with self.subTest(arm=physical_arm, process=process_arch, major=major):
                     env = dict(os.environ, FIXTURE_PHYSICAL_ARM=physical_arm,
-                               FIXTURE_MACOS=f"{major}.0")
+                               FIXTURE_PROCESS_ARCH=process_arch, FIXTURE_MACOS=f"{major}.0")
                     process = subprocess.run(
                         [ruby, str(harness), str(output)], env=env, text=True,
                         capture_output=True,
@@ -671,10 +691,15 @@ load ARGV.fetch(0)
                     self.assertEqual(process.returncode == 0, expected, process.stderr)
                     if expected:
                         values = json.loads(process.stdout)
-                        architecture = "arm64" if physical_arm == "1" else "x86_64"
-                        self.assertEqual(values["sha256"], hashes[architecture])
-                        self.assertTrue(values["url"].endswith(f"-{architecture}.pkg"))
+                        self.assertEqual(values["sha256"], hashes["arm64"])
+                        self.assertTrue(values["url"].endswith("-arm64.pkg"))
+                        self.assertTrue(values["pkg"].endswith("-arm64.pkg"))
                         self.assertTrue(values["uninstall"]["script"]["must_succeed"])
+                    else:
+                        self.assertIn(
+                            "Unsupported architecture" if major in (15, 26, 27) else "Unsupported macOS",
+                            process.stderr,
+                        )
 
     def test_manifest_mutation_or_placeholder_prevents_output(self):
         path = self.manifest()
@@ -683,6 +708,7 @@ load ARGV.fetch(0)
             ("sha256", "0" * 64), ("sha256", ":no_check"),
             ("stapled", False), ("signature_verified", False),
             ("filename", "../outside.pkg"), ("architecture", "other"),
+            ("architecture", "x86_64"),
             ("notarization", {"status": "Invalid"}),
         ]
         for key, value in mutations:
@@ -705,19 +731,27 @@ load ARGV.fetch(0)
                 generate_cask.generate(path, self.root / "must-not-exist.rb", runner)
         self.assertFalse((self.root / "must-not-exist.rb").exists())
 
-    def test_tampered_metadata_and_duplicate_architectures_are_rejected(self):
+    def test_tampered_metadata_is_rejected(self):
         path = self.manifest()
         data = json.loads(path.read_text())
         log = path.parent / data["artifacts"][0]["notarization"]["log"]
         log.write_text(json.dumps({"jobId": SUBMISSION, "status": "Invalid"}))
         with self.assertRaises(release.ReleaseError):
             generate_cask.validate_manifest(path, FakeRunner())
-        data["artifacts"] = [data["artifacts"][1], data["artifacts"][1]]
-        path.write_text(json.dumps(data))
-        with self.assertRaisesRegex(release.ReleaseError, "Duplicate"):
-            generate_cask.validate_manifest(
-                path, FakeRunner([result(), result(stdout=signature())]),
-            )
+
+    def test_manifest_requires_exactly_one_arm64_package(self):
+        path = self.manifest()
+        data = json.loads(path.read_text())
+        arm = data["artifacts"][0]
+        intel = dict(arm, architecture="x86_64", filename="pam-watchid-1.2.3-x86_64.pkg")
+        for artifacts in (None, [], [arm, arm], [arm, intel], [intel]):
+            with self.subTest(artifacts=artifacts):
+                data["artifacts"] = artifacts
+                path.write_text(json.dumps(data))
+                runner = FakeRunner()
+                with self.assertRaises(release.ReleaseError):
+                    generate_cask.validate_manifest(path, runner)
+                self.assertEqual(runner.calls, [])
 
     def test_generator_cannot_overwrite_immutable_release_files(self):
         path = self.manifest()

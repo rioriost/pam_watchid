@@ -1,19 +1,17 @@
 cask "pam-watchid" do
   version "@VERSION@"
-  native_arm = Hardware::CPU.physical_cpu_arm64?
-  native_arch = native_arm ? "arm64" : "x86_64"
-  sha256 native_arm ? "@ARM64_SHA256@" : "@X86_64_SHA256@"
+  sha256 "@ARM64_SHA256@"
 
-  url "https://github.com/rioriost/pam_watchid/releases/download/v#{version}/pam-watchid-#{version}-#{native_arch}.pkg"
+  url "https://github.com/rioriost/pam_watchid/releases/download/v#{version}/pam-watchid-#{version}-arm64.pkg"
   name "pam_watchid"
   desc "Approve sudo using Touch ID or Apple Watch"
   homepage "https://github.com/rioriost/pam_watchid"
 
-  supported_macos = [:sequoia, :tahoe]
-  supported_macos << :golden_gate if native_arm
-  depends_on macos: supported_macos
+  depends_on macos: [:sequoia, :tahoe, :golden_gate]
+  # Allow Rosetta-running Homebrew on Apple silicon.
+  depends_on arch: :arm64 unless Hardware::CPU.physical_cpu_arm64?
 
-  pkg "pam-watchid-#{version}-#{native_arch}.pkg"
+  pkg "pam-watchid-#{version}-arm64.pkg"
 
   # The package's uninstaller owns PAM cleanup before removing its payload.
   uninstall script: {

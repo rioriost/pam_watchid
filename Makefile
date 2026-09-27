@@ -9,7 +9,7 @@ else ifeq ($(PROCESS_ARCH),x86_64)
 ifeq ($(TRANSLATED),1)
 NATIVE_ARCH := arm64
 else ifeq ($(filter-out 0,$(TRANSLATED)),)
-NATIVE_ARCH := x86_64
+$(error Apple silicon is required; Intel Macs are not supported)
 else
 $(error Unexpected Rosetta translation state)
 endif
@@ -21,8 +21,8 @@ ARCH ?= $(NATIVE_ARCH)
 ifneq ($(words $(ARCH)),1)
 $(error ARCH must be a single architecture)
 endif
-ifeq ($(filter $(ARCH),arm64 x86_64),)
-$(error ARCH must be arm64 or x86_64)
+ifneq ($(ARCH),arm64)
+$(error ARCH must be arm64)
 endif
 
 BUILD_ROOT ?= build
@@ -45,7 +45,7 @@ RELEASE_OPTIONS = --team-id "$(TEAM_ID)" --keychain "$(KEYCHAIN)" \
 	--application-identity "$(APPLICATION_IDENTITY)" \
 	--installer-identity "$(INSTALLER_IDENTITY)"
 
-.PHONY: build build-all build-arm64 build-x86_64 check check-native \
+.PHONY: build build-all build-arm64 check check-native \
 	check-scripts check-artifacts notary-profile release cask
 
 # Rebuild both binaries together so signing-team changes cannot reuse old objects.
@@ -63,13 +63,10 @@ build:
 		-framework Foundation -framework LocalAuthentication \
 		-o "$(OUT)/pam_watchid-helper"
 
-build-all: build-arm64 build-x86_64
+build-all: build-arm64
 
 build-arm64:
 	$(MAKE) build ARCH=arm64
-
-build-x86_64:
-	$(MAKE) build ARCH=x86_64
 
 check: build-all check-native check-scripts
 	$(MAKE) check-artifacts

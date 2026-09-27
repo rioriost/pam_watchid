@@ -2,7 +2,7 @@
 set -eu
 
 build_root=${1:?usage: check-artifacts.sh BUILD_ROOT}
-for arch in arm64 x86_64; do
+for arch in arm64; do
     module="$build_root/$arch/pam_watchid.so"
     helper="$build_root/$arch/pam_watchid-helper"
     for binary in "$module" "$helper"; do
